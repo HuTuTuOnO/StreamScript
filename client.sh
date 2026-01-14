@@ -31,7 +31,7 @@ for package in "${required_packages[@]}"; do
 done
 
 # 配置文件路径
-config_file="/opt/AirTools/Stream/client.json"
+config_file="/opt/stramunlock/client.json"
 
 # 检查配置文件是否存在，如果不存在则创建一个默认文件
 if [[ ! -f "$config_file" ]]; then
