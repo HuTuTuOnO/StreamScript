@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 定义配置文件路径
-CONFIG_FILE="/opt/AirTools/Stream/service.json"
+CONFIG_FILE="/opt/stream/service.json"
 
 # 如果传入了 API 或 ID 参数，更新本地配置文件
 if [[ -n "$API" || -n "$ID" ]]; then
@@ -60,36 +60,30 @@ fi
 
 # 如果未传入API或ID且配置文件中也没有相应值，则报错
 if [[ -z "$API" || -z "$ID" ]]; then
-  echo "错误：未提供 API 或 ID，且配置文件中也不存在，无法继续。"
+  echo "错误：未提供 API,ID，且配置文件中也不存在，无法继续。"
   exit 1
 fi
 
 # 获取流媒体解锁状态
-MEDIA_CONTENT=$(bash <(curl -L -s https://raw.githubusercontent.com/HuTuTuOnO/AirTools-SH/main/Stream/check.sh) -M 4 -R 66 2>&1 | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g')
+MEDIA_CONTENT=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+# MEDIA_CONTENT=$(cat stream.log)
 
-# 读取流媒体状态
-declare -A media_status
-declare -a unlocked_platforms
+# 读取流媒体状态（修正正则表达式）
+mapfile -t unlocked_platforms < <(echo "$MEDIA_CONTENT" | \
+  grep '\[32m' | \
+  grep ':' | \
+  sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
+  sed -E 's/^[[:space:]]+//; s/:	+.*$//; s/:[[:space:]]{5,}.*$//; s/[[:space:]]+$//' | \
+  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)'
+)
 
-while IFS= read -r line; do
-  if [[ $line =~ ^(.+):[[:space:]]*(Yes|No|Failed|Originals).* ]]; then
-    platform=$(echo "${BASH_REMATCH[1]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    status="${BASH_REMATCH[2]}"
-    media_status["$platform"]="$status"
-    
-    # 如果状态为 Yes，则将平台添加到解锁平台数组中
-    if [[ "$status" == "Yes" ]]; then
-      unlocked_platforms+=("$platform")
-    fi
-  fi
-done <<< "$MEDIA_CONTENT"
+# 打印解锁的平台列表
+echo "解锁的平台数量: ${#unlocked_platforms[@]}"
+echo "解锁的平台列表:"
+for platform in "${unlocked_platforms[@]}"; do
+  echo "  - $platform"
+done
 
-# 打印流媒体状态
-# echo "流媒体状态："
-# for platform in "${!media_status[@]}"; do
-#   echo "$platform: ${media_status[$platform]}"
-# done
-
-# 提交到AirTools平台
+# 提交到stream平台
 res_body=$(curl -X POST -H "Content-Type: application/json" -d "$(jq -n --arg id "$ID" --argjson platforms "$(printf '%s\n' "${unlocked_platforms[@]}" | jq -R . | jq -s .)" '{id: $id, platform: $platforms}')" "$API")
 echo "流媒体状态更新结果：$res_body"
