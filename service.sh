@@ -38,12 +38,6 @@ done
 # 定义配置文件路径
 CONFIG_FILE="/opt/stream/service.json"
 
-# 检查配置目录是否存在，如果不存在则创建一个默认配置目录
-if [[ ! -d "$(dirname "$CONFIG_FILE")" ]]; then
-  echo "提示：配置目录不存在，正在创建一个默认配置目录。"
-  mkdir -p "$(dirname "$CONFIG_FILE")"
-fi
-
 # 如果传入了 API 或 ID 参数，更新本地配置文件
 if [[ -n "$API" || -n "$ID" ]]; then
   # 读取已有配置文件的值（如果文件存在）
