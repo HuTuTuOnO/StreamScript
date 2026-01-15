@@ -140,8 +140,6 @@ for platform in "${locked_platforms[@]}"; do
 
   # 对别名进行 Ping 测试，找出最优的 alias
   declare -A best_node_info=()
-  # 打印 baest_node_info 数据
-  declare -p best_node_info
   for alias in $alias_list; do
     # 获取当前节点域名
     node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
