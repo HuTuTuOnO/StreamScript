@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VER='1.0.0'
+ver='1.0.0'
 
 # 检查是否为root用户
 [[ $EUID -ne 0 ]] && echo -e "错误：必须使用root用户运行此脚本！\n" && exit 1
@@ -21,11 +21,11 @@ fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --API)
-      API="$2"
+      api="$2"
       shift 2
       ;;
     --ID)
-      ID="$2"
+      id="$2"
       shift 2
       ;;
     *)
@@ -36,40 +36,40 @@ while [[ $# -gt 0 ]]; do
 done
 
 # 定义配置文件路径
-CONFIG_FILE="/opt/stream/service.json"
+config_file="/opt/stream/service.json"
 
 # 如果传入了 API 或 ID 参数，更新本地配置文件
-if [[ -n "$API" || -n "$ID" ]]; then
+if [[ -n "$api" || -n "$id" ]]; then
   # 读取已有配置文件的值（如果文件存在）
-  if [[ -f "$CONFIG_FILE" ]]; then
-    [[ -z "$API" ]] && API=$(jq -r '.api // empty' "$CONFIG_FILE")
-    [[ -z "$ID" ]] && ID=$(jq -r '.id // empty' "$CONFIG_FILE")
+  if [[ -f "$config_file" ]]; then
+    [[ -z "$api" ]] && api=$(jq -r '.api // empty' "$config_file")
+    [[ -z "$id" ]] && id=$(jq -r '.id // empty' "$config_file")
   fi
   
   # 保存更新后的 API 和 ID 到配置文件
-  mkdir -p "$(dirname "$CONFIG_FILE")"  # 确保目录存在
-  jq -n --arg api "$API" --arg id "$ID" '{api: $api, id: $id}' > "$CONFIG_FILE"
-  echo "配置已更新到 $CONFIG_FILE"
+  mkdir -p "$(dirname "$config_file")"  # 确保目录存在
+  jq -n --arg api "$api" --arg id "$id" '{api: $api, id: $id}' > "$config_file"
+  echo "配置已更新到 $config_file"
 fi
 
 # 检查配置文件是否存在并读取
-if [[ -f "$CONFIG_FILE" ]]; then
-  [[ -z "$API" ]] && API=$(jq -r '.api' "$CONFIG_FILE")
-  [[ -z "$ID" ]] && ID=$(jq -r '.id' "$CONFIG_FILE")
+if [[ -f "$config_file" ]]; then
+  [[ -z "$api" ]] && api=$(jq -r '.api' "$config_file")
+  [[ -z "$id" ]] && id=$(jq -r '.id' "$config_file")
 fi
 
 # 如果未传入API或ID且配置文件中也没有相应值，则报错
-if [[ -z "$API" || -z "$ID" ]]; then
+if [[ -z "$api" || -z "$id" ]]; then
   echo "错误：未提供 API,ID，且配置文件中也不存在，无法继续。"
   exit 1
 fi
 
 # 获取流媒体解锁状态
-MEDIA_CONTENT=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
 # MEDIA_CONTENT=$(cat stream.log)
 
 # 读取流媒体状态（修正正则表达式）
-mapfile -t unlocked_platforms < <(echo "$MEDIA_CONTENT" | \
+mapfile -t unlocked_platforms < <(echo "$media_content" | \
   grep '\[32m' | \
   grep ':' | \
   sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
@@ -86,5 +86,5 @@ for platform in "${unlocked_platforms[@]}"; do
 done
 
 # 提交到stream平台
-res_body=$(curl -X POST -H "Content-Type: application/json" -d "$(jq -n --arg id "$ID" --argjson platforms "$(printf '%s\n' "${unlocked_platforms[@]}" | jq -R . | jq -s .)" '{id: $id, platform: $platforms}')" "$API")
+res_body=$(curl -X POST -H "Content-Type: application/json" -d "$(jq -n --arg id "$id" --argjson platforms "$(printf '%s\n' "${unlocked_platforms[@]}" | jq -R . | jq -s .)" '{id: $id, platform: $platforms}')" "$api")
 echo "流媒体状态更新结果：$res_body"
