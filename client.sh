@@ -16,10 +16,8 @@ for package in "${required_packages[@]}"; do
     install_cmd=""
     if which apt &> /dev/null; then
       install_cmd="apt-get update -y > /dev/null && apt-get install -y $package > /dev/null"
-    elif which yum &> /dev/null; then
-      install_cmd="yum install -y $package > /dev/null"
-    elif which pacman &> /dev/null; then
-      install_cmd="pacman -Sy --noconfirm $package > /dev/null"
+    elif which apk &> /dev/null; then
+      install_cmd="apk add --no-cache $package > /dev/null"
     else
       echo "错误：不支持的包管理器，请手动安装 $package。"
       exit 1
@@ -267,7 +265,13 @@ for software in "${proxy_soft[@]}"; do
   case "$software" in
   "soga")
     echo "提示：正在重启 soga"
-    systemctl restart soga
+    if command -v systemctl &>/dev/null; then
+      systemctl restart soga
+    elif command -v rc-service &>/dev/null; then
+      rc-service soga restart
+    else
+      soga restart 2>/dev/null || echo "请手动重启 soga"
+    fi
     ;;
   "soga-docker")
     echo "提示：正在重启 soga(docker)"
