@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VER='1.0.0'
+ver='1.0.0'
 
 # 检查是否为 root 用户
 if [[ $EUID -ne 0 ]]; then
@@ -67,141 +67,137 @@ fi
 # 解析传入参数
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --API) API="$2"; shift 2 ;;
+    --API) api="$2"; shift 2 ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
 done
 
 # 检查 API 地址
-if [[ -z "$API" ]]; then
+if [[ -z "$api" ]]; then
   echo "错误：没有传入 API 地址，请使用 --API 传入有效的 API 地址。"
   exit 1
 fi
 
 # 获取 API 数据
-API_RES=$(curl -s "$API")
-if [[ $(echo "$API_RES" | jq -r '.code') -ne 200 ]]; then
-  echo "错误：无法获取流媒体解锁状态，原因: $(echo "$API_RES" | jq -r '.msg')"
+api_res=$(curl -s "$api")
+if [[ $(echo "$api_res" | jq -r '.code') -ne 200 ]]; then
+  echo "错误：无法获取流媒体解锁状态，原因: $(echo "$api_res" | jq -r '.msg')"
   exit 1
 fi
 
 # 解析 API 数据
-if ! NODES_JSON=$(echo "$API_RES" | jq -r '.data.node // {}'); then
+if ! nodes_json=$(echo "$api_res" | jq -r '.data.node // {}'); then
   echo "错误：无法解析节点数据。"
   exit 1
 fi
 
-if ! PLATFORMS_JSON=$(echo "$API_RES" | jq -r '.data.platform // {}'); then
+if ! platforms_json=$(echo "$api_res" | jq -r '.data.platform // {}'); then
   echo "错误：无法解析平台数据。"
   exit 1
 fi
 
 # 获取流媒体解锁状态
-MEDIA_CONTENT=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+# media_content=$(cat stream.log)
 
-# 读取流媒体状态（筛选未解锁的平台）
-mapfile -t unlocked_platforms < <(echo "$MEDIA_CONTENT" | \
+# 读取流媒体状态（修正正则表达式）
+mapfile -t locked_platforms < <(echo "$media_content" | \
   grep '\[31m' | \
   grep ':' | \
   sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
-  sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/:$//' | \
-  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)'
+  sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
+  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)' | \
+  sort | uniq
 )
 
 # 记录已添加的出口节点和规则
 declare -A routes
 
-# 循环对比判断是否解锁
-for platform in "${unlocked_platforms[@]}"; do
+# 本地未解锁的平台与 API 数据对比 并 获取 PING 最低的节点 进行解锁
+for platform in "${locked_platforms[@]}"; do
   # 检查是否存在别名和规则，并避免 null 值导致错误
-  alias_list=$(echo "$PLATFORMS_JSON" | jq -r --arg platform "$platform" '.[$platform].alias // empty | select(. != null)[]')
-  rules_list=$(echo "$PLATFORMS_JSON" | jq -r --arg platform "$platform" '.[$platform].rules // empty | select(. != null)[]')
-  
-  # 如果别名和规则为空，跳过该平台
+  alias_list=$(echo "$platforms_json" | jq -r --arg platform "$platform" '.[$platform].alias // empty | select(. != null)[]')
+  rules_list=$(echo "$platforms_json" | jq -r --arg platform "$platform" '.[$platform].rules // empty | select(. != null)[]')
   if [[ -z "$alias_list" || -z "$rules_list" ]]; then
     echo "警告：平台 $platform 没有找到别名或规则，跳过。"
     continue
   fi
 
   # 对别名进行 Ping 测试，找出最优的 alias
-  best_ping=999999
-  best_alias=""
-
+  declare -A best_node_info=()
   for alias in $alias_list; do
     # 获取当前节点域名
-    node_domain=$(echo "$NODES_JSON" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
+    node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
     if [[ -z "$node_domain" ]]; then
       echo "警告：平台 $platform 节点 $alias 的域名为空，跳过。"
       continue
     fi
 
     # 进行 Ping 测试，添加重试机制
-    ping_time=""
     for attempt in {1..3}; do
-      ping_time=$(ping -c 1 "$node_domain" | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}')
-      if [[ -n "$ping_time" ]]; then
+      best_node_info[ping_time]=$(ping -c 1 "$node_domain" | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}')
+      if [[ -n "${best_node_info[ping_time]}" ]]; then
         break
       fi
     done
-    
-    if [[ -z "$ping_time" ]]; then
+    if [[ -z "${best_node_info[ping_time]}" ]]; then
       echo "警告：平台 $platform Ping 节点 $alias 失败，已跳过。"
       continue
     fi
     
     # 更新最优 alias
-    if (( $(echo "$ping_time < $best_ping" | bc -l) )); then
-      best_ping="$ping_time"
-      best_alias="$alias"
+    if [[ -z "${best_node_info[best_ping]}" || "$(echo "${best_node_info[ping_time]} < ${best_node_info[best_ping]}" | bc -l)" -eq 1 ]]; then
+      best_node_info[best_alias]="$alias"
+      best_node_info[best_ping]="${best_node_info[ping_time]}"
     fi
   done
 
   # 增加容错判断是否存在 best_alias
-  if [[ -z "$best_alias" ]]; then
+  if [[ -z "${best_node_info[best_alias]}" ]]; then
     echo "警告：无法为平台 $platform 找到最优节点，跳过。"
     continue
   fi
 
   # 提示相关解锁信息
-  echo "提示：平台 $platform 最优节点 $best_alias，延时 $best_ping MS"
+  echo "提示：平台 $platform 最优节点 ${best_node_info[best_alias]}，延时 ${best_node_info[best_ping]} MS"
 
   # 将 platform 存入 routes 生成配置文件时读取（添加去重）
-  if [[ -z "${routes[$best_alias]}" ]]; then
-    routes[$best_alias]="\"# $platform\""
+  if [[ -z "${routes[${best_node_info[best_alias]}]}" ]]; then
+    routes[${best_node_info[best_alias]}]="\"# $platform\""
   else
     # 检查平台注释是否已存在
-    if [[ ! "${routes[$best_alias]}" =~ \"#\ $platform\" ]]; then
-      routes[$best_alias]+="^\"# $platform\""
+    if [[ ! "${routes[${best_node_info[best_alias]}]}" =~ \"#\ $platform\" ]]; then
+      routes[${best_node_info[best_alias]}]+="^\"# $platform\""
     fi
   fi
 
   # 将 rules_list 存入 routes 生成配置文件时读取（添加去重）
   for rule in $rules_list; do
     # 检查规则是否已存在
-    if [[ ! "${routes[$best_alias]}" =~ \"$rule\" ]]; then
-      routes[$best_alias]+="^\"$rule\""
+    if [[ ! "${routes[${best_node_info[best_alias]}]}" =~ \"$rule\" ]]; then
+      routes[${best_node_info[best_alias]}]+="^\"$rule\""
     fi
   done
+
 done
 
-# 生成 SOGA 配置文件
+# 生成代理软件配置文件
 generate_soga_config(){
   local routes_file="${1}routes.toml"
-
+  # 定义类型
   declare -A soga_node_type=(
     ["ss"]="ss"
   )
-
-   : > "$routes_file" # 清空文件
-   
-   echo "enable=true" > "$routes_file"
-
-  for alias in $(echo "$NODES_JSON" | jq -r 'keys[]'); do
+  # 清空文件
+  : > "$routes_file"
+  echo "enable=true" > "$routes_file"
+  # 写入路由部分
+  for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
     if [[ -z "${routes[$alias]}" ]]; then
       echo "警告：节点 $alias 没有任何规则，跳过。"
       continue
     fi
-  
+
     # 写入路由规则
     echo '' >> "$routes_file"
     echo "# 路由 $alias" >> "$routes_file"
@@ -214,15 +210,14 @@ generate_soga_config(){
       echo "  $rule," >> "$routes_file"
     done
     unset IFS
-  
     echo ']' >> "$routes_file"
   
     # 获取节点信息
-    node_type=$(echo "$NODES_JSON" | jq -r --arg alias "$alias" '.[$alias].type // empty')
-    node_domain=$(echo "$NODES_JSON" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
-    node_port=$(echo "$NODES_JSON" | jq -r --arg alias "$alias" '.[$alias].port // empty')
-    node_cipher=$(echo "$NODES_JSON" | jq -r --arg alias "$alias" '.[$alias].cipher // empty')
-    node_password=$(echo "$NODES_JSON" | jq -r --arg alias "$alias" '.[$alias].uuid // empty')
+    node_type=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].type // empty')
+    node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
+    node_port=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].port // empty')
+    node_cipher=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].cipher // empty')
+    node_password=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].uuid // empty')
   
     # 写入出口节点
     echo '' >> "$routes_file"
@@ -252,7 +247,7 @@ declare -A soft_config_dir=(
   ["soga-docker"]="/etc/soga/"
 )
 
-# 循环处理代理软件
+# 循环处理配置
 for software in "${proxy_soft[@]}"; do
   routes_file="${soft_config_dir[$software]}"
   case "$software" in
