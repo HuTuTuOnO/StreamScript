@@ -100,7 +100,7 @@ media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
 
 # 读取流媒体状态（修正正则表达式）
 mapfile -t locked_media < <(echo "$media_content" | \
-  grep '\[31m' | \
+  grep -E '\[3[1|3]m' | \
   grep ':' | \
   sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
   sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
