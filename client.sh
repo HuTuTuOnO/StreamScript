@@ -99,7 +99,7 @@ media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
 # media_content=$(cat stream.log)
 
 # 读取流媒体状态（修正正则表达式）
-mapfile -t locked_platforms < <(echo "$media_content" | \
+mapfile -t locked_media < <(echo "$media_content" | \
   grep '\[31m' | \
   grep ':' | \
   sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
@@ -107,6 +107,23 @@ mapfile -t locked_platforms < <(echo "$media_content" | \
   grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)' | \
   sort | uniq
 )
+
+# 获取 TikTok 解锁状态
+tiktok_content=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
+mapfile -t locked_tiktok < <(echo "$tiktok_content" | \
+  grep '\[31m' | \
+  grep ':' | \
+  sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
+  sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
+  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)' | \
+  sort | uniq
+)
+
+# 合并未解锁的平台列表
+locked_platforms=()
+locked_platforms+=("${locked_media[@]}")
+locked_platforms+=("${locked_tiktok[@]}")
+
 
 # 记录已添加的出口节点和规则
 declare -A routes
@@ -123,6 +140,8 @@ for platform in "${locked_platforms[@]}"; do
 
   # 对别名进行 Ping 测试，找出最优的 alias
   declare -A best_node_info=()
+  # 打印 baest_node_info 数据
+  declare -p best_node_info
   for alias in $alias_list; do
     # 获取当前节点域名
     node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
