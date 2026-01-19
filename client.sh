@@ -95,7 +95,21 @@ if ! platforms_json=$(echo "$api_res" | jq -r '.data.platform // {}'); then
 fi
 
 # 获取流媒体解锁状态
-media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+echo "提示：正在检测流媒体解锁状态..."
+for attempt in {1..3}; do
+  media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+  if [[ -n "$media_content" ]]; then
+    echo "提示：流媒体检测脚本执行成功"
+    break
+  fi
+  echo "警告：流媒体检测失败，正在重试 ($attempt/3)..."
+  sleep 2
+done
+
+if [[ -z "$media_content" ]]; then
+  echo "错误：流媒体检测脚本执行失败，请检查网络或脚本源"
+  exit 1
+fi
 
 #将 media_content 保存到日志
 echo "$media_content" > /opt/stream/stream.log
@@ -111,7 +125,21 @@ mapfile -t locked_media < <(echo "$media_content" | \
 )
 
 # 获取 TikTok 解锁状态
-tiktok_content=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
+echo "提示：正在检测 TikTok 解锁状态..."
+for attempt in {1..3}; do
+  tiktok_content=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
+  if [[ -n "$tiktok_content" ]]; then
+    echo "提示：TikTok 检测脚本执行成功"
+    break
+  fi
+  echo "警告：TikTok 检测失败，正在重试 ($attempt/3)..."
+  sleep 2
+done
+
+if [[ -z "$tiktok_content" ]]; then
+  echo "错误：TikTok 检测脚本执行失败，请检查网络或脚本源"
+  exit 1
+fi
 
 # 将 tiktok_content 保存到日志
 echo "$tiktok_content" > /opt/stream/tiktok.log
@@ -146,8 +174,6 @@ for platform in "${locked_platforms[@]}"; do
 
   # 对别名进行 Ping 测试，找出最优的 alias
   declare -A best_node_info=()
-  # 打印 baest_node_info 数据
-  declare -p best_node_info
   for alias in $alias_list; do
     # 获取当前节点域名
     node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
@@ -158,7 +184,7 @@ for platform in "${locked_platforms[@]}"; do
 
     # 进行 Ping 测试，添加重试机制
     for attempt in {1..3}; do
-      best_node_info[ping_time]=$(ping -c 1 "$node_domain" | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}')
+      best_node_info[ping_time]=$(ping -c 1 -W 2 "$node_domain" | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}')
       if [[ -n "${best_node_info[ping_time]}" ]]; then
         break
       fi
