@@ -96,7 +96,9 @@ fi
 
 # 获取流媒体解锁状态
 media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
-# media_content=$(cat stream.log)
+
+#将 media_content 保存到日志
+echo "$media_content" > /opt/stream/stream.log
 
 # 读取流媒体状态（修正正则表达式）
 mapfile -t locked_media < <(echo "$media_content" | \
@@ -110,6 +112,10 @@ mapfile -t locked_media < <(echo "$media_content" | \
 
 # 获取 TikTok 解锁状态
 tiktok_content=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
+
+# 将 tiktok_content 保存到日志
+echo "$tiktok_content" > /opt/stream/tiktok.log
+
 mapfile -t locked_tiktok < <(echo "$tiktok_content" | \
   grep '\[31m' | \
   grep ':' | \
@@ -140,6 +146,8 @@ for platform in "${locked_platforms[@]}"; do
 
   # 对别名进行 Ping 测试，找出最优的 alias
   declare -A best_node_info=()
+  # 打印 baest_node_info 数据
+  declare -p best_node_info
   for alias in $alias_list; do
     # 获取当前节点域名
     node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
