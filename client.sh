@@ -26,42 +26,6 @@ for package in "${required_packages[@]}"; do
   fi
 done
 
-# 配置文件路径
-config_file="/opt/stream/client.json"
-
-# 读取代理软件配置
-proxy_soft=($(jq -r '.proxy_soft[]' < "$config_file" 2>/dev/null))
-
-# 选择代理软件（如果未配置）
-if [[ ${#proxy_soft[@]} -eq 0 ]]; then
-  proxy_soft_options=("soga" "soga-docker")
-  selected=()
-  PS3="请选择要使用的代理软件: "
-  while true; do
-    select choice in "${proxy_soft_options[@]}" "完成" "退出"; do
-      case $choice in
-        "完成")
-          break 2 # 退出内层和外层循环
-          ;;
-        "退出")
-          exit 0
-          ;;
-        "")
-          echo "无效选择."
-          ;;
-        *)
-          selected+=("$choice")
-          echo "已选择: ${selected[@]}"
-          ;;
-      esac
-    done
-  done
-  # 直接设置 proxy_soft 为已选择的值
-  proxy_soft=("${selected[@]}")
-  # 保存选择的软件到文件
-  jq -n --argjson soft "$(jq -n -c '[$ARGS.positional[]]' --args "${selected[@]}")" '{"proxy_soft": $soft}' > "$config_file"
-fi
-
 # 解析传入参数
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -176,15 +140,15 @@ for platform in "${locked_platforms[@]}"; do
   declare -A best_node_info=()
   for alias in $alias_list; do
     # 获取当前节点域名
-    node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
-    if [[ -z "$node_domain" ]]; then
+    node_host=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].host // empty')
+    if [[ -z "$node_host" ]]; then
       echo "警告：平台 $platform 节点 $alias 的域名为空，跳过。"
       continue
     fi
 
     # 进行 Ping 测试，添加重试机制
     for attempt in {1..3}; do
-      best_node_info[ping_time]=$(ping -c 1 -W 2 "$node_domain" | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}')
+      best_node_info[ping_time]=$(ping -c 1 -W 2 "$node_host" | grep 'time=' | awk -F'time=' '{print $2}' | awk '{print $1}')
       if [[ -n "${best_node_info[ping_time]}" ]]; then
         break
       fi
@@ -230,106 +194,88 @@ for platform in "${locked_platforms[@]}"; do
 
 done
 
-# 生成代理软件配置文件
-generate_soga_config(){
-  local routes_file="${1}routes.toml"
-  # 定义类型
-  declare -A soga_node_type=(
-    ["ss"]="ss"
-  )
-  # 清空文件
-  : > "$routes_file"
-  echo "enable=true" > "$routes_file"
-  # 写入路由部分
-  for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
-    if [[ -z "${routes[$alias]}" ]]; then
-      echo "警告：节点 $alias 没有任何规则，跳过。"
-      continue
-    fi
+# 生成 soga 配置文件
+routes_file="/etc/soga/routes.toml"
+# 清空文件
+: > "$routes_file"
+echo "enable=true" > "$routes_file"
+# 写入路由部分
+for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
+  if [[ -z "${routes[$alias]}" ]]; then
+    echo "警告：节点 $alias 没有任何规则，跳过。"
+    continue
+  fi
 
-    # 写入路由规则
-    echo '' >> "$routes_file"
-    echo "# 路由 $alias" >> "$routes_file"
-    echo '[[routes]]' >> "$routes_file"
-    echo 'rules=[' >> "$routes_file"
-    
-    # 设置分隔符
-    IFS='^'
-    for rule in ${routes[$alias]}; do
-      echo "  $rule," >> "$routes_file"
-    done
-    unset IFS
-    echo ']' >> "$routes_file"
-  
-    # 获取节点信息
-    node_type=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].type // empty')
-    node_domain=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].domain // empty')
-    node_port=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].port // empty')
-    node_cipher=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].cipher // empty')
-    node_password=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].uuid // empty')
-  
-    # 写入出口节点
-    echo '' >> "$routes_file"
-    echo "# 出口 $alias" >> "$routes_file"
-    echo '[[routes.Outs]]' >> "$routes_file"
-    echo "type=\"${soga_node_type[$node_type]:-$node_type}\"" >> "$routes_file"
-    echo "server=\"$node_domain\"" >> "$routes_file"
-    echo "port=$node_port" >> "$routes_file"
-    echo "password=\"$node_password\"" >> "$routes_file"
-    echo "cipher=\"$node_cipher\"" >> "$routes_file"
-  done
-  
-  # 添加全局路由规则
+  # 写入路由规则
   echo '' >> "$routes_file"
-  echo '# 路由 ALL' >> "$routes_file"
+  echo "# 路由 $alias" >> "$routes_file"
   echo '[[routes]]' >> "$routes_file"
-  echo 'rules=["*"]' >> "$routes_file"
-  echo '' >> "$routes_file"
-  echo '# 出口 ALL' >> "$routes_file"
-  echo '[[routes.Outs]]' >> "$routes_file"
-  echo 'type="direct"' >> "$routes_file"
-}
-
-# 配置文件路径
-declare -A soft_config_dir=(
-  ["soga"]="/etc/soga/"
-  ["soga-docker"]="/etc/soga/"
-)
-
-# 循环处理配置
-for software in "${proxy_soft[@]}"; do
-  routes_file="${soft_config_dir[$software]}"
-  case "$software" in
-  "soga" | "soga-docker") 
-    echo "提示：正在自动生成 soga 配置文件"
-    generate_soga_config "$routes_file"
-    ;;
-  *) 
-    echo "警告：不支持的代理软件：$software"
-    ;;
-  esac
+  echo 'rules=[' >> "$routes_file"
   
-done
+  # 设置分隔符
+  IFS='^'
+  for rule in ${routes[$alias]}; do
+    echo "  $rule," >> "$routes_file"
+  done
+  unset IFS
+  echo ']' >> "$routes_file"
 
-# 循环重启软件
-for software in "${proxy_soft[@]}"; do
-  case "$software" in
-  "soga")
-    echo "提示：正在重启 soga"
-    if command -v systemctl &>/dev/null; then
-      systemctl restart soga
-    elif command -v rc-service &>/dev/null; then
-      rc-service soga restart
-    else
-      soga restart 2>/dev/null || echo "请手动重启 soga"
-    fi
-    ;;
-  "soga-docker")
-    echo "提示：正在重启 soga(docker)"
-    docker ps --filter ancestor=vaxilu/soga --format "{{.ID}}" | xargs -r docker restart
-    ;;
-  *) 
-    echo "警告：不支持的代理软件：$software"
-    ;;
+  # 获取节点信息
+  node_type=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].type // empty')
+  node_host=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].host // empty')
+  node_port=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].port // empty')
+  node_value1=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value1 // empty')
+  node_value2=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value2 // empty')
+  node_value3=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value3 // empty')
+  node_value4=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value4 // empty')
+  node_value5=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value5 // empty')
+  node_value6=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value6 // empty')
+
+  # 写入出口节点
+  echo '' >> "$routes_file"
+  echo "# 出口 $alias" >> "$routes_file"
+  echo '[[routes.Outs]]' >> "$routes_file"
+  echo "type=\"$node_type\"" >> "$routes_file"
+  echo "server=\"$node_host\"" >> "$routes_file"
+  echo "port=$node_port" >> "$routes_file"
+  case "$node_type" in
+    "ss")
+      echo "password=\"$node_value1\"" >> "$routes_file"
+      echo "cipher=\"$node_value2\"" >> "$routes_file"
+      ;;
+    "trojan")
+      echo "password=\"$node_value1\"" >> "$routes_file"
+      echo "sin=\"$node_value2\"" >> "$routes_file"
+      # skip_cert_verify 1/0 转为 true/false
+      if [[ "$node_value3" == "1" ]]; then
+        echo "skip_cert_verify=true" >> "$routes_file"
+      else
+        echo "skip_cert_verify=false" >> "$routes_file"
+      fi
+      ;;
+    "http")
+      echo "username=\"$node_value1\"" >> "$routes_file"
+      echo "password=\"$node_value2\"" >> "$routes_file"
+      ;;
+    "socks")
+      echo "username=\"$node_value1\"" >> "$routes_file"
+      echo "password=\"$node_value2\"" >> "$routes_file"
+      ;;
+    *)
+      # 其他类型可扩展
+      ;;
   esac
 done
+
+# 添加全局路由规则
+echo '' >> "$routes_file"
+echo '# 路由 ALL' >> "$routes_file"
+echo '[[routes]]' >> "$routes_file"
+echo 'rules=["*"]' >> "$routes_file"
+echo '' >> "$routes_file"
+echo '# 出口 ALL' >> "$routes_file"
+echo '[[routes.Outs]]' >> "$routes_file"
+echo 'type="direct"' >> "$routes_file"
+
+
+echo "提示：已自动生成 soga 配置文件"
