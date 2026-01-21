@@ -194,11 +194,13 @@ for platform in "${locked_platforms[@]}"; do
 
 done
 
-# 生成 soga 配置文件
+# 定义配置文件路径
 routes_file="/etc/soga/routes.toml"
+routes_temp="/etc/soga/routes.toml.tmp"
+
 # 清空文件
-: > "$routes_file"
-echo "enable=true" > "$routes_file"
+: > "$routes_temp"
+echo "enable=true" > "$routes_temp"
 # 写入路由部分
 for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
   if [[ -z "${routes[$alias]}" ]]; then
@@ -207,18 +209,18 @@ for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
   fi
 
   # 写入路由规则
-  echo '' >> "$routes_file"
-  echo "# 路由 $alias" >> "$routes_file"
-  echo '[[routes]]' >> "$routes_file"
-  echo 'rules=[' >> "$routes_file"
+  echo '' >> "$routes_temp"
+  echo "# 路由 $alias" >> "$routes_temp"
+  echo '[[routes]]' >> "$routes_temp"
+  echo 'rules=[' >> "$routes_temp"
   
   # 设置分隔符
   IFS='^'
   for rule in ${routes[$alias]}; do
-    echo "  $rule," >> "$routes_file"
+    echo "  $rule," >> "$routes_temp"
   done
   unset IFS
-  echo ']' >> "$routes_file"
+  echo ']' >> "$routes_temp"
 
   # 获取节点信息
   node_type=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].type // empty')
@@ -232,34 +234,34 @@ for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
   node_value6=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value6 // empty')
 
   # 写入出口节点
-  echo '' >> "$routes_file"
-  echo "# 出口 $alias" >> "$routes_file"
-  echo '[[routes.Outs]]' >> "$routes_file"
-  echo "type=\"$node_type\"" >> "$routes_file"
-  echo "server=\"$node_host\"" >> "$routes_file"
-  echo "port=$node_port" >> "$routes_file"
+  echo '' >> "$routes_temp"
+  echo "# 出口 $alias" >> "$routes_temp"
+  echo '[[routes.Outs]]' >> "$routes_temp"
+  echo "type=\"$node_type\"" >> "$routes_temp"
+  echo "server=\"$node_host\"" >> "$routes_temp"
+  echo "port=$node_port" >> "$routes_temp"
   case "$node_type" in
     "ss")
-      echo "password=\"$node_value1\"" >> "$routes_file"
-      echo "cipher=\"$node_value2\"" >> "$routes_file"
+      echo "password=\"$node_value1\"" >> "$routes_temp"
+      echo "cipher=\"$node_value2\"" >> "$routes_temp"
       ;;
     "trojan")
-      echo "password=\"$node_value1\"" >> "$routes_file"
-      echo "sin=\"$node_value2\"" >> "$routes_file"
+      echo "password=\"$node_value1\"" >> "$routes_temp"
+      echo "sin=\"$node_value2\"" >> "$routes_temp"
       # skip_cert_verify 1/0 转为 true/false
       if [[ "$node_value3" == "1" ]]; then
-        echo "skip_cert_verify=true" >> "$routes_file"
+        echo "skip_cert_verify=true" >> "$routes_temp"
       else
-        echo "skip_cert_verify=false" >> "$routes_file"
+        echo "skip_cert_verify=false" >> "$routes_temp"
       fi
       ;;
     "http")
-      echo "username=\"$node_value1\"" >> "$routes_file"
-      echo "password=\"$node_value2\"" >> "$routes_file"
+      echo "username=\"$node_value1\"" >> "$routes_temp"
+      echo "password=\"$node_value2\"" >> "$routes_temp"
       ;;
     "socks")
-      echo "username=\"$node_value1\"" >> "$routes_file"
-      echo "password=\"$node_value2\"" >> "$routes_file"
+      echo "username=\"$node_value1\"" >> "$routes_temp"
+      echo "password=\"$node_value2\"" >> "$routes_temp"
       ;;
     *)
       # 其他类型可扩展
@@ -268,14 +270,16 @@ for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
 done
 
 # 添加全局路由规则
-echo '' >> "$routes_file"
-echo '# 路由 ALL' >> "$routes_file"
-echo '[[routes]]' >> "$routes_file"
-echo 'rules=["*"]' >> "$routes_file"
-echo '' >> "$routes_file"
-echo '# 出口 ALL' >> "$routes_file"
-echo '[[routes.Outs]]' >> "$routes_file"
-echo 'type="direct"' >> "$routes_file"
+echo '' >> "$routes_temp"
+echo '# 路由 ALL' >> "$routes_temp"
+echo '[[routes]]' >> "$routes_temp"
+echo 'rules=["*"]' >> "$routes_temp"
+echo '' >> "$routes_temp"
+echo '# 出口 ALL' >> "$routes_temp"
+echo '[[routes.Outs]]' >> "$routes_temp"
+echo 'type="direct"' >> "$routes_temp"
 
+# 替换旧的路由文件
+mv -f "$routes_temp" "$routes_file"
 
 echo "提示：已自动生成 soga 配置文件"
