@@ -65,8 +65,24 @@ if [[ -z "$api" || -z "$id" ]]; then
 fi
 
 # 获取流媒体解锁状态
-media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
-# MEDIA_CONTENT=$(cat stream.log)
+echo "提示：正在检测流媒体解锁状态..."
+for attempt in {1..3}; do
+  media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+  if [[ -n "$media_content" ]]; then
+    echo "提示：流媒体检测脚本执行成功"
+    break
+  fi
+  echo "警告：流媒体检测失败，正在重试 ($attempt/3)..."
+  sleep 2
+done
+
+if [[ -z "$media_content" ]]; then
+  echo "错误：流媒体检测脚本执行失败，请检查网络或脚本源"
+  exit 1
+fi
+
+#将 media_content 保存到日志
+echo "$media_content" > /opt/stream/stream.log
 
 # 读取流媒体状态（修正正则表达式）
 mapfile -t unlocked_media < <(echo "$media_content" | \
@@ -79,7 +95,25 @@ mapfile -t unlocked_media < <(echo "$media_content" | \
 )
 
 # 获取 TikTok 解锁状态
-tiktok_content=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
+echo "提示：正在检测 TikTok 解锁状态..."
+for attempt in {1..3}; do
+  tiktok_content=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
+  if [[ -n "$tiktok_content" ]]; then
+    echo "提示：TikTok 检测脚本执行成功"
+    break
+  fi
+  echo "警告：TikTok 检测失败，正在重试 ($attempt/3)..."
+  sleep 2
+done
+
+if [[ -z "$tiktok_content" ]]; then
+  echo "错误：TikTok 检测脚本执行失败，请检查网络或脚本源"
+  exit 1
+fi
+
+# 将 tiktok_content 保存到日志
+echo "$tiktok_content" > /opt/stream/tiktok.log
+
 mapfile -t unlocked_tiktok < <(echo "$tiktok_content" | \
   grep -E '\[3[2|3]m' | \
   grep ':' | \
