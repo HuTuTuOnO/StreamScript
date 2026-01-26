@@ -294,7 +294,7 @@ echo '[[routes.Outs]]' >> "$routes_temp"
 echo 'type="direct"' >> "$routes_temp"
 
 # 替换旧的路由文件
-cp "$routes_temp" "$routes_file"
+cat "$routes_temp" > "$routes_file"
 rm -f "$routes_temp"
 
 echo "提示：已自动生成 soga 配置文件"
