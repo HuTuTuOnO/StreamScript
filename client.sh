@@ -60,7 +60,7 @@ fi
 
 # 获取流媒体解锁状态
 echo "提示：正在检测流媒体解锁状态..."
-for round in 1 2; do
+for round in {1..3}; do
   for attempt in {1..3}; do
     media_temp=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
     if [[ -n "$media_temp" ]]; then
@@ -71,6 +71,7 @@ for round in 1 2; do
     sleep 2
   done
   if [[ -n "$media_temp" ]]; then
+    # 将 media_temp 保存到日志
     echo -e "$media_temp" > "/opt/stream/stream.${round}.log"
     media_content+="$media_temp\n"
   fi
@@ -96,7 +97,7 @@ mapfile -t locked_media < <(echo -e "$media_content" | \
 
 # 获取 TikTok 解锁状态
 echo "提示：正在检测 TikTok 解锁状态..."
-for round in 1 2; do
+for round in {1..3}; do
   for attempt in {1..3}; do
     tiktok_temp=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
     if [[ -n "$tiktok_temp" ]]; then
@@ -107,6 +108,8 @@ for round in 1 2; do
     sleep 2
   done
   if [[ -n "$tiktok_temp" ]]; then
+    # 将 tiktok_temp 保存到日志
+    echo -e "$tiktok_temp" > "/opt/stream/tiktok.${round}.log"
     tiktok_content+="$tiktok_temp\n"
   fi
 done
@@ -117,7 +120,7 @@ if [[ -z "$tiktok_content" ]]; then
 fi
 
 # 将 tiktok_content 保存到日志
-echo -e "$tiktok_content" > /opt/stream/tiktok.log
+# echo -e "$tiktok_content" > /opt/stream/tiktok.log
 
 mapfile -t locked_tiktok < <(echo -e "$tiktok_content" | \
   grep '\[31m' | \
