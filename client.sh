@@ -60,14 +60,19 @@ fi
 
 # 获取流媒体解锁状态
 echo "提示：正在检测流媒体解锁状态..."
-for attempt in {1..3}; do
-  media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
-  if [[ -n "$media_content" ]]; then
-    echo "提示：流媒体检测脚本执行成功"
-    break
+for round in 1 2; do
+  for attempt in {1..3}; do
+    media_temp=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+    if [[ -n "$media_temp" ]]; then
+      echo "提示：流媒体检测脚本执行成功（第${round}次）"
+      break
+    fi
+    echo "警告：流媒体检测失败（第${round}次），正在重试 ($attempt/3)..."
+    sleep 2
+  done
+  if [[ -n "$media_temp" ]]; then
+    media_content+="$media_temp\n"
   fi
-  echo "警告：流媒体检测失败，正在重试 ($attempt/3)..."
-  sleep 2
 done
 
 if [[ -z "$media_content" ]]; then
@@ -76,10 +81,10 @@ if [[ -z "$media_content" ]]; then
 fi
 
 #将 media_content 保存到日志
-echo "$media_content" > /opt/stream/stream.log
+echo -e "$media_content" > /opt/stream/stream.log
 
 # 读取流媒体状态（修正正则表达式）
-mapfile -t locked_media < <(echo "$media_content" | \
+mapfile -t locked_media < <(echo -e "$media_content" | \
   grep -E '\[3[1|3]m' | \
   grep ':' | \
   sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
@@ -90,14 +95,19 @@ mapfile -t locked_media < <(echo "$media_content" | \
 
 # 获取 TikTok 解锁状态
 echo "提示：正在检测 TikTok 解锁状态..."
-for attempt in {1..3}; do
-  tiktok_content=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
-  if [[ -n "$tiktok_content" ]]; then
-    echo "提示：TikTok 检测脚本执行成功"
-    break
+for round in 1 2; do
+  for attempt in {1..3}; do
+    tiktok_temp=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
+    if [[ -n "$tiktok_temp" ]]; then
+      echo "提示：TikTok 检测脚本执行成功（第${round}次）"
+      break
+    fi
+    echo "警告：TikTok 检测失败（第${round}次），正在重试 ($attempt/3)..."
+    sleep 2
+  done
+  if [[ -n "$tiktok_temp" ]]; then
+    tiktok_content+="$tiktok_temp\n"
   fi
-  echo "警告：TikTok 检测失败，正在重试 ($attempt/3)..."
-  sleep 2
 done
 
 if [[ -z "$tiktok_content" ]]; then
@@ -106,9 +116,9 @@ if [[ -z "$tiktok_content" ]]; then
 fi
 
 # 将 tiktok_content 保存到日志
-echo "$tiktok_content" > /opt/stream/tiktok.log
+echo -e "$tiktok_content" > /opt/stream/tiktok.log
 
-mapfile -t locked_tiktok < <(echo "$tiktok_content" | \
+mapfile -t locked_tiktok < <(echo -e "$tiktok_content" | \
   grep '\[31m' | \
   grep ':' | \
   sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
