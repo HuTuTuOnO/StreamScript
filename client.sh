@@ -71,6 +71,7 @@ for round in 1 2; do
     sleep 2
   done
   if [[ -n "$media_temp" ]]; then
+    echo -e "$media_temp" > "/opt/stream/stream.${round}.log"
     media_content+="$media_temp\n"
   fi
 done
@@ -81,7 +82,7 @@ if [[ -z "$media_content" ]]; then
 fi
 
 #将 media_content 保存到日志
-echo -e "$media_content" > /opt/stream/stream.log
+#echo -e "$media_content" > /opt/stream/stream.log
 
 # 读取流媒体状态（修正正则表达式）
 mapfile -t locked_media < <(echo -e "$media_content" | \
