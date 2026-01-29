@@ -101,19 +101,8 @@ mapfile -t unlocked_platforms < <(echo "$media_content" | \
 # 过滤 exclude_platforms 平台
 if [[ -n "$exclude_platforms" ]]; then
   read -ra exclude_arr <<< "$exclude_platforms"
-  filtered_platforms=()
-  for platform in "${unlocked_platforms[@]}"; do
-    skip=false
-    for ex in "${exclude_arr[@]}"; do
-      if [[ "$platform" == "$ex" ]]; then
-        skip=true
-        break
-      fi
-    done
-    if ! $skip; then
-      filtered_platforms+=("$platform")
-    fi
-  done
+  exclude_pattern=$(IFS="|"; echo "${exclude_arr[*]}")
+  mapfile -t filtered_platforms < <(printf "%s\n" "${unlocked_platforms[@]}" | grep -v -E "^(${exclude_pattern})$")
 else
   filtered_platforms=("${unlocked_platforms[@]}")
 fi
