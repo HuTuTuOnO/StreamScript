@@ -62,7 +62,7 @@ fi
 echo "提示：正在检测流媒体解锁状态..."
 for round in {1..3}; do
   for attempt in {1..3}; do
-    media_temp=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+    media_temp=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
     if [[ -n "$media_temp" ]]; then
       echo "提示：流媒体检测脚本执行成功（第${round}次）"
       break
@@ -86,7 +86,7 @@ fi
 #echo -e "$media_content" > /opt/stream/stream.log
 
 # 读取流媒体状态（修正正则表达式）
-mapfile -t locked_media < <(echo -e "$media_content" | \
+mapfile -t locked_platforms < <(echo -e "$media_content" | \
   grep -E '\[3[1|3]m' | \
   grep ':' | \
   sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
@@ -94,47 +94,6 @@ mapfile -t locked_media < <(echo -e "$media_content" | \
   grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)' | \
   sort | uniq
 )
-
-# 获取 TikTok 解锁状态
-echo "提示：正在检测 TikTok 解锁状态..."
-for round in {1..3}; do
-  for attempt in {1..3}; do
-    tiktok_temp=$(bash <(curl -s https://raw.githubusercontent.com/lmc999/TikTokCheck/main/tiktok.sh))
-    if [[ -n "$tiktok_temp" ]]; then
-      echo "提示：TikTok 检测脚本执行成功（第${round}次）"
-      break
-    fi
-    echo "警告：TikTok 检测失败（第${round}次），正在重试 ($attempt/3)..."
-    sleep 2
-  done
-  if [[ -n "$tiktok_temp" ]]; then
-    # 将 tiktok_temp 保存到日志
-    echo -e "$tiktok_temp" > "/opt/stream/tiktok.${round}.log"
-    tiktok_content+="$tiktok_temp\n"
-  fi
-done
-
-if [[ -z "$tiktok_content" ]]; then
-  echo "错误：TikTok 检测脚本执行失败，请检查网络或脚本源"
-  exit 1
-fi
-
-# 将 tiktok_content 保存到日志
-# echo -e "$tiktok_content" > /opt/stream/tiktok.log
-
-mapfile -t locked_tiktok < <(echo -e "$tiktok_content" | \
-  grep '\[31m' | \
-  grep ':' | \
-  sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
-  sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
-  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)' | \
-  sort | uniq
-)
-
-# 合并未解锁的平台列表
-locked_platforms=()
-locked_platforms+=("${locked_media[@]}")
-locked_platforms+=("${locked_tiktok[@]}")
 
 
 # 记录已添加的出口节点和规则
