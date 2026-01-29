@@ -52,10 +52,12 @@ if [[ -n "$api" || -n "$id" ]]; then
   echo "配置已更新到 $config_file"
 fi
 
+
 # 检查配置文件是否存在并读取
 if [[ -f "$config_file" ]]; then
   [[ -z "$api" ]] && api=$(jq -r '.api' "$config_file")
   [[ -z "$id" ]] && id=$(jq -r '.id' "$config_file")
+  exclude_platforms=$(jq -r '.exclude // empty' "$config_file")
 fi
 
 # 如果未传入API或ID且配置文件中也没有相应值，则报错
@@ -94,13 +96,34 @@ mapfile -t unlocked_platforms < <(echo "$media_content" | \
   sort | uniq
 )
 
-# 打印解锁的平台列表
-echo "解锁的平台数量: ${#unlocked_platforms[@]}"
+
+
+# 过滤 exclude_platforms 平台
+if [[ -n "$exclude_platforms" ]]; then
+  read -ra exclude_arr <<< "$exclude_platforms"
+  filtered_platforms=()
+  for platform in "${unlocked_platforms[@]}"; do
+    skip=false
+    for ex in "${exclude_arr[@]}"; do
+      if [[ "$platform" == "$ex" ]]; then
+        skip=true
+        break
+      fi
+    done
+    if ! $skip; then
+      filtered_platforms+=("$platform")
+    fi
+  done
+else
+  filtered_platforms=("${unlocked_platforms[@]}")
+fi
+
+echo "解锁的平台数量: ${#filtered_platforms[@]}"
 echo "解锁的平台列表:"
-for platform in "${unlocked_platforms[@]}"; do
+for platform in "${filtered_platforms[@]}"; do
   echo "  - $platform"
 done
 
 # 提交到stream平台
-res_body=$(curl -X POST -H "Content-Type: application/json" -d "$(jq -n --arg id "$id" --argjson platforms "$(printf '%s\n' "${unlocked_platforms[@]}" | jq -R . | jq -s .)" '{id: $id, platform: $platforms}')" "$api")
+res_body=$(curl -X POST -H "Content-Type: application/json" -d "$(jq -n --arg id "$id" --argjson platforms "$(printf '%s\n' "${filtered_platforms[@]}" | jq -R . | jq -s .)" '{id: $id, platform: $platforms}')" "$api")
 echo "流媒体状态更新结果：$res_body"
