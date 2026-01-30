@@ -38,26 +38,18 @@ done
 # 定义配置文件路径
 config_file="/opt/stream/service.json"
 
-# 如果传入了 API 或 ID 参数，更新本地配置文件
-if [[ -n "$api" || -n "$id" ]]; then
-  # 读取已有配置文件的值（如果文件存在）
-  if [[ -f "$config_file" ]]; then
-    [[ -z "$api" ]] && api=$(jq -r '.api // empty' "$config_file")
-    [[ -z "$id" ]] && id=$(jq -r '.id // empty' "$config_file")
-  fi
-  
-  # 保存更新后的 API 和 ID 到配置文件
-  mkdir -p "$(dirname "$config_file")"  # 确保目录存在
-  jq -n --arg api "$api" --arg id "$id" '{api: $api, id: $id}' > "$config_file"
-  echo "配置已更新到 $config_file"
+# 读取配置文件设置默认值
+if [[ -f "$config_file" ]]; then
+  api=${api:-$(jq -r '.api' "$config_file")}
+  id=${id:-$(jq -r '.id' "$config_file")}
+  exclude_platforms=$(jq -r '.exclude // empty' "$config_file")
 fi
 
-
-# 检查配置文件是否存在并读取
-if [[ -f "$config_file" ]]; then
-  [[ -z "$api" ]] && api=$(jq -r '.api' "$config_file")
-  [[ -z "$id" ]] && id=$(jq -r '.id' "$config_file")
-  exclude_platforms=$(jq -r '.exclude // empty' "$config_file")
+# 如果传入了 API 或 ID 参数，更新本地配置文件
+if [[ -n "$api" || -n "$id" ]]; then
+  mkdir -p "$(dirname "$config_file")"
+  jq -n --arg api "$api" --arg id "$id" --arg exclude "$exclude_platforms" '{api: $api, id: $id, exclude: $exclude}' > "$config_file"
+  echo "配置已更新到 $config_file"
 fi
 
 # 如果未传入API或ID且配置文件中也没有相应值，则报错
@@ -96,16 +88,12 @@ mapfile -t unlocked_platforms < <(echo "$media_content" | \
   sort | uniq
 )
 
-
-
 # 过滤 exclude_platforms 平台
-if [[ -n "$exclude_platforms" ]]; then
-  read -ra exclude_arr <<< "$exclude_platforms"
-  exclude_pattern=$(IFS="|"; echo "${exclude_arr[*]}")
-  mapfile -t filtered_platforms < <(printf "%s\n" "${unlocked_platforms[@]}" | grep -v -E "^(${exclude_pattern})$")
-else
-  filtered_platforms=("${unlocked_platforms[@]}")
-fi
+for platform in "${unlocked_platforms[@]}"; do
+  if [[ ! " $exclude_platforms " =~ " $platform " ]]; then
+    filtered_platforms+=("$platform")
+  fi
+done
 
 echo "解锁的平台数量: ${#filtered_platforms[@]}"
 echo "解锁的平台列表:"
