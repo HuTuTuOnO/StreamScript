@@ -88,8 +88,21 @@ mapfile -t unlocked_platforms < <(echo "$media_content" | \
   sort | uniq
 )
 
-# 过滤 exclude_platforms 平台
+# 标准化平台名称映射
+# 平台原名以 lmc999 提供的名称为准
+# [平台原名]="标准化名称"
+declare -A platform_map=(
+  # ["Netflix"]="Netflix"
+)
+
+standardized_platforms=()
 for platform in "${unlocked_platforms[@]}"; do
+  std_platform=${platform_map[$platform]:-$platform}
+  standardized_platforms+=("$std_platform")
+done
+
+# 过滤 exclude_platforms 平台
+for platform in "${standardized_platforms[@]}"; do
   if [[ ! " $exclude_platforms " =~ " $platform " ]]; then
     filtered_platforms+=("$platform")
   fi
