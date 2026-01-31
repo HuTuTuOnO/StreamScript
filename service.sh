@@ -1,7 +1,5 @@
 #!/bin/bash
-
 ver='1.0.0'
-type="1-stream" # 流媒体检测脚本类型 lmt999 1-stream
 
 # 检查是否为root用户
 [[ $EUID -ne 0 ]] && echo -e "错误：必须使用root用户运行此脚本！\n" && exit 1
@@ -62,14 +60,7 @@ fi
 # 获取流媒体解锁状态
 echo "提示：正在检测流媒体解锁状态..."
 for attempt in {1..3}; do
-  if [[ "$type" == "lmt999" ]]; then
-    media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
-  elif [[ "$type" == "1-stream" ]]; then
-    media_content=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
-  else
-    echo "错误：未知的流媒体检测脚本类型 $type"
-    exit 1
-  fi
+  media_content=$(bash <(curl -L -s https://github.com/HuTuTuOnO/RegionRestrictionCheck/raw/main/check.sh) -M 4 -R 66 2>&1)
   if [[ -n "$media_content" ]]; then
     echo "提示：流媒体检测脚本执行成功"
     break
@@ -86,52 +77,22 @@ fi
 #将 media_content 保存到日志
 echo "$media_content" > /opt/stream/stream.log
 
-# 读取流媒体状态（修正正则表达式）
-if [[ "$type" == "lmt999" || "$type" == "1-stream" ]]; then
-  mapfile -t unlocked_platforms < <(echo "$media_content" | \
-    grep '\[32m' | \
-    grep ':' | \
-    sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
-    sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
-    grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络|输入|版本)' | \
-    sort | uniq
-  )
-else
-  echo "错误：未知的流媒体检测脚本类型 $type"
-  exit 1
-fi
-
-# 标准化平台名称映射
-if [[ "$type" == "1-stream" ]]; then
-  declare -A platform_map=(
-    # ["Netflix"]="Netflix"
-    ["Tiktok"]="Tiktok Region"
-    ["iQyi Oversea"]="iQyi Oversea Region"
-    ["Google Gemini Location"]="Google Gemini"
-    ["Sky DE"]="SLY DE"
-    ["Spotify Region"]="Spotify Registration"
-    ["SHOWTIME"]="SkyShowTime"
-  )
-elif [[ "$type" == "lmt999" ]]; then
-  declare -A platform_map=()
-fi
-
-# 标准化锁定平台名称
-declare -a standardized_platforms=()
-for platform in "${unlocked_platforms[@]}"; do
-  std_platform=${platform_map[$platform]:-$platform}
-  standardized_platforms+=("$std_platform")
-done
+mapfile -t unlocked_platforms < <(echo "$media_content" | \
+  grep '\[32m' | \
+  grep ':' | \
+  sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
+  sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
+  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络|输入|版本)' | \
+  sort | uniq
+)
 
 # 过滤 exclude 平台
 declare -a filtered_platforms=()
-for platform in "${standardized_platforms[@]}"; do
+for platform in "${unlocked_platforms[@]}"; do
   if [[ ! " $exclude_platforms " =~ " $platform " ]]; then
     filtered_platforms+=("$platform")
   fi
 done
-
-# 生成最终解锁平台列表
 unlocked_platforms=("${filtered_platforms[@]}")
 
 # 输出解锁的平台信息
