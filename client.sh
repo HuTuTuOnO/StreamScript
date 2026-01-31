@@ -62,7 +62,8 @@ fi
 echo "提示：正在检测流媒体解锁状态..."
 for round in {1..3}; do
   for attempt in {1..3}; do
-    media_temp=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
+    media_temp=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+    # media_temp=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
     if [[ -n "$media_temp" ]]; then
       echo "提示：流媒体检测脚本执行成功（第${round}次）"
       break
