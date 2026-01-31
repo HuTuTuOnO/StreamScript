@@ -105,7 +105,7 @@ fi
 if [[ "$type" == "1-stream" ]]; then
   declare -A platform_map=(
     # ["Netflix"]="Netflix"
-    ["TikTok"]="Tiktok Region"
+    ["Tiktok"]="Tiktok Region"
     ["iQyi Oversea"]="iQyi Oversea Region"
     ["Google Gemini Location"]="Google Gemini"
     ["Sky DE"]="SLY DE"
