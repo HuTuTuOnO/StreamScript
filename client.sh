@@ -12,7 +12,6 @@ required_packages=(jq bc curl)
 for package in "${required_packages[@]}"; do
   if ! command -v "$package" &> /dev/null; then
     echo "提示：$package 未安装，正在尝试安装..."
-    install_cmd=""
     if which apt &> /dev/null; then
       install_cmd="apt-get update -y > /dev/null && apt-get install -y $package > /dev/null"
     elif which apk &> /dev/null; then
@@ -29,6 +28,7 @@ done
 while [[ $# -gt 0 ]]; do
   case $1 in
     --API) api="$2"; shift 2 ;;
+    --M) netType="$2"; shift 2 ;;
     *) echo "未知参数: $1"; exit 1 ;;
   esac
 done
@@ -40,19 +40,54 @@ if [[ -z "$api" ]]; then
 fi
 
 # 获取 API 数据
-api_res=$(curl -s "$api")
-if [[ $(echo "$api_res" | jq -r '.code') -ne 200 ]]; then
-  echo "错误：无法获取流媒体解锁状态，原因: $(echo "$api_res" | jq -r '.msg')"
+api_date=$(curl -s "$api")
+if [[ $(echo "$api_date" | jq -r '.code') -ne 200 ]]; then
+  echo "错误：无法获取流媒体解锁状态，原因: $(echo "$api_date" | jq -r '.msg')"
   exit 1
 fi
 
 # 解析 API 数据
-if ! nodes_json=$(echo "$api_res" | jq -r '.data.node // {}'); then
+if ! nodes_data=$(echo "$api_date" | jq -r '.data.node // {}'); then
   echo "错误：无法解析节点数据。"
   exit 1
 fi
 
-if ! platforms_json=$(echo "$api_res" | jq -r '.data.platform // {}'); then
+# 循环 节点地址 替换Host为IPV4或IPV6
+if [[ -n "$netType" ]]; then
+  # 检查并安装必要的软件包
+  if ! command -v dig &> /dev/null; then
+    echo "提示：dig 未安装，正在尝试安装..."
+    if which apt &> /dev/null; then
+      install_cmd="apt-get update -y > /dev/null && apt-get install -y dnsutils > /dev/null"
+    elif which apk &> /dev/null; then
+      install_cmd="apk add --no-cache bind-tools > /dev/null"
+    else
+      echo "错误：不支持的包管理器，请手动安装 dig。"
+      exit 1
+    fi
+    eval "$install_cmd" || { echo "错误：安装 dig 失败。"; exit 1; }
+  fi
+  # 替换 Host 为 IP 地址
+  for alias in $(echo "$nodes_data" | jq -r 'keys[]'); do
+    host=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].host // empty')
+    if [[ -n "$host" ]]; then
+      if [[ "$netType" == "4" ]]; then
+        ip_addr=$(dig +tcp +short A "$host" @8.8.8.8 | head -n 1)
+      elif [[ "$netType" == "6" ]]; then
+        ip_addr=$(dig +tcp +short AAAA "$host" @8.8.8.8 | head -n 1)
+      fi
+      if [[ -n "$ip_addr" ]]; then
+        nodes_data=$(echo "$nodes_data" | jq -r --arg alias "$alias" --arg ip_addr "$ip_addr" '.[$alias].host = $ip_addr')
+        echo "提示：节点 $alias 的主机 $host 已替换为 IP 地址 $ip_addr"
+      else
+        echo "警告：无法解析主机 $host 的 IP 地址，保持不变。"
+      fi
+    fi
+  done
+fi
+
+
+if ! platforms_data=$(echo "$api_date" | jq -r '.data.platform // {}'); then
   echo "错误：无法解析平台数据。"
   exit 1
 fi
@@ -100,8 +135,8 @@ declare -A routes
 # 本地未解锁的平台与 API 数据对比 并 获取 PING 最低的节点 进行解锁
 for platform in "${locked_platforms[@]}"; do
   # 检查是否存在别名和规则，并避免 null 值导致错误
-  alias_list=$(echo "$platforms_json" | jq -r --arg platform "$platform" '.[$platform].alias // empty | select(. != null)[]')
-  rules_list=$(echo "$platforms_json" | jq -r --arg platform "$platform" '.[$platform].rules // empty | select(. != null)[]')
+  alias_list=$(echo "$platforms_data" | jq -r --arg platform "$platform" '.[$platform].alias // empty | select(. != null)[]')
+  rules_list=$(echo "$platforms_data" | jq -r --arg platform "$platform" '.[$platform].rules // empty | select(. != null)[]')
   if [[ -z "$alias_list" || -z "$rules_list" ]]; then
     echo "警告：平台 $platform 没有找到别名或规则，跳过。"
     continue
@@ -111,7 +146,7 @@ for platform in "${locked_platforms[@]}"; do
   declare -A best_node_info=()
   for alias in $alias_list; do
     # 获取当前节点域名
-    node_host=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].host // empty')
+    node_host=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].host // empty')
     if [[ -z "$node_host" ]]; then
       echo "警告：平台 $platform 节点 $alias 的域名为空，跳过。"
       continue
@@ -130,9 +165,9 @@ for platform in "${locked_platforms[@]}"; do
     fi
     
     # 更新最优 alias
-    if [[ -z "${best_node_info[best_ping]}" || "$(echo "${best_node_info[ping_time]} < ${best_node_info[best_ping]}" | bc -l)" -eq 1 ]]; then
+    if [[ -z "${best_node_info[best_time]}" || "$(echo "${best_node_info[ping_time]} < ${best_node_info[best_time]}" | bc -l)" -eq 1 ]]; then
       best_node_info[best_alias]="$alias"
-      best_node_info[best_ping]="${best_node_info[ping_time]}"
+      best_node_info[best_time]="${best_node_info[ping_time]}"
     fi
   done
 
@@ -143,7 +178,7 @@ for platform in "${locked_platforms[@]}"; do
   fi
 
   # 提示相关解锁信息
-  echo "提示：平台 $platform 最优节点 ${best_node_info[best_alias]}，延时 ${best_node_info[best_ping]} MS"
+  echo "提示：平台 $platform 最优节点 ${best_node_info[best_alias]}，延时 ${best_node_info[best_time]} MS"
 
   # 将 platform 存入 routes 生成配置文件时读取（添加去重）
   if [[ -z "${routes[${best_node_info[best_alias]}]}" ]]; then
@@ -173,7 +208,7 @@ routes_temp="/etc/soga/routes.toml.tmp"
 : > "$routes_temp"
 echo "enable=true" > "$routes_temp"
 # 写入路由部分
-for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
+for alias in $(echo "$nodes_data" | jq -r 'keys[]'); do
   if [[ -z "${routes[$alias]}" ]]; then
     echo "警告：节点 $alias 没有任何规则，跳过。"
     continue
@@ -194,15 +229,15 @@ for alias in $(echo "$nodes_json" | jq -r 'keys[]'); do
   echo ']' >> "$routes_temp"
 
   # 获取节点信息
-  node_type=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].type // empty')
-  node_host=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].host // empty')
-  node_port=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].port // empty')
-  node_value1=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value1 // empty')
-  node_value2=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value2 // empty')
-  node_value3=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value3 // empty')
-  node_value4=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value4 // empty')
-  node_value5=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value5 // empty')
-  node_value6=$(echo "$nodes_json" | jq -r --arg alias "$alias" '.[$alias].value6 // empty')
+  node_type=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].type // empty')
+  node_host=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].host // empty')
+  node_port=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].port // empty')
+  node_value1=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].value1 // empty')
+  node_value2=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].value2 // empty')
+  node_value3=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].value3 // empty')
+  node_value4=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].value4 // empty')
+  node_value5=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].value5 // empty')
+  node_value6=$(echo "$nodes_data" | jq -r --arg alias "$alias" '.[$alias].value6 // empty')
 
   # 写入出口节点
   echo '' >> "$routes_temp"
