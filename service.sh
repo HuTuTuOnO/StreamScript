@@ -64,7 +64,7 @@ echo "提示：正在检测流媒体解锁状态..."
 for attempt in {1..3}; do
   if [[ "$type" == "lmt999" ]]; then
     media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
-  else if [[ "$type" == "1-stream" ]]; then
+  elif [[ "$type" == "1-stream" ]]; then
     media_content=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
   else
     echo "错误：未知的流媒体检测脚本类型 $type"
@@ -112,28 +112,35 @@ if [[ "$type" == "1-stream" ]]; then
     ["Spotify Region"]="Spotify Registration"
     ["SHOWTIME"]="SkyShowTime"
   )
-else if [[ "$type" == "lmt999" ]]; then
+elif [[ "$type" == "lmt999" ]]; then
   declare -A platform_map=()
 fi
 
+# 标准化锁定平台名称
+declare -a standardized_platforms=()
 for platform in "${unlocked_platforms[@]}"; do
   std_platform=${platform_map[$platform]:-$platform}
   standardized_platforms+=("$std_platform")
 done
 
-# 过滤 exclude_platforms 平台
+# 过滤 exclude 平台
+declare -a filtered_platforms=()
 for platform in "${standardized_platforms[@]}"; do
   if [[ ! " $exclude_platforms " =~ " $platform " ]]; then
     filtered_platforms+=("$platform")
   fi
 done
 
-echo "解锁的平台数量: ${#filtered_platforms[@]}"
+# 生成最终解锁平台列表
+unlocked_platforms=("${filtered_platforms[@]}")
+
+# 输出解锁的平台信息
+echo "解锁的平台数量: ${#unlocked_platforms[@]}"
 echo "解锁的平台列表:"
-for platform in "${filtered_platforms[@]}"; do
+for platform in "${unlocked_platforms[@]}"; do
   echo "  - $platform"
 done
 
 # 提交到stream平台
-res_body=$(curl -X POST -H "Content-Type: application/json" -d "$(jq -n --arg id "$id" --argjson platforms "$(printf '%s\n' "${filtered_platforms[@]}" | jq -R . | jq -s .)" '{id: $id, platform: $platforms}')" "$api")
+res_body=$(curl -X POST -H "Content-Type: application/json" -d "$(jq -n --arg id "$id" --argjson platforms "$(printf '%s\n' "${unlocked_platforms[@]}" | jq -R . | jq -s .)" '{id: $id, platform: $platforms}')" "$api")
 echo "流媒体状态更新结果：$res_body"
