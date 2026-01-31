@@ -1,6 +1,7 @@
 #!/bin/bash
 
 ver='1.0.0'
+type="1-stream" # 流媒体检测脚本类型 lmt999 1-stream
 
 # 检查是否为root用户
 [[ $EUID -ne 0 ]] && echo -e "错误：必须使用root用户运行此脚本！\n" && exit 1
@@ -61,8 +62,14 @@ fi
 # 获取流媒体解锁状态
 echo "提示：正在检测流媒体解锁状态..."
 for attempt in {1..3}; do
-  media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
-  # media_content=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
+  if [[ "$type" == "lmt999" ]]; then
+    media_content=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
+  else if [[ "$type" == "1-stream" ]]; then
+    media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+  else
+    echo "错误：未知的流媒体检测脚本类型 $type"
+    exit 1
+  fi
   if [[ -n "$media_content" ]]; then
     echo "提示：流媒体检测脚本执行成功"
     break
@@ -80,21 +87,34 @@ fi
 echo "$media_content" > /opt/stream/stream.log
 
 # 读取流媒体状态（修正正则表达式）
-mapfile -t unlocked_platforms < <(echo "$media_content" | \
-  grep '\[32m' | \
-  grep ':' | \
-  sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
-  sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
-  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络)' | \
-  sort | uniq
-)
+if [[ "$type" == "lmt999" || "$type" == "1-stream" ]]; then
+  mapfile -t unlocked_platforms < <(echo "$media_content" | \
+    grep '\[32m' | \
+    grep ':' | \
+    sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
+    sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
+    grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络|输入|版本)' | \
+    sort | uniq
+  )
+else
+  echo "错误：未知的流媒体检测脚本类型 $type"
+  exit 1
+fi
 
 # 标准化平台名称映射
-# 平台原名以 lmc999 提供的名称为准
-# [平台原名]="标准化名称"
-declare -A platform_map=(
-  # ["Netflix"]="Netflix"
-)
+if [[ "$type" == "1-stream" ]]; then
+  declare -A platform_map=(
+    # ["Netflix"]="Netflix"
+    ["TikTok"]="Tiktok Region"
+    ["iQyi Oversea"]="iQyi Oversea Region"
+    ["Google Gemini Location"]="Google Gemini"
+    ["Sky DE"]="SLY DE"
+    ["Spotify Region"]="Spotify Registration"
+    ["SHOWTIME"]="SkyShowTime"
+  )
+else if [[ "$type" == "lmt999" ]]; then
+  declare -A platform_map=()
+fi
 
 for platform in "${unlocked_platforms[@]}"; do
   std_platform=${platform_map[$platform]:-$platform}
