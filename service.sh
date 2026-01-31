@@ -63,9 +63,9 @@ fi
 echo "提示：正在检测流媒体解锁状态..."
 for attempt in {1..3}; do
   if [[ "$type" == "lmt999" ]]; then
-    media_content=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
-  else if [[ "$type" == "1-stream" ]]; then
     media_content=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
+  else if [[ "$type" == "1-stream" ]]; then
+    media_content=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
   else
     echo "错误：未知的流媒体检测脚本类型 $type"
     exit 1
