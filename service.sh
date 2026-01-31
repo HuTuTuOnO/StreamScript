@@ -95,7 +95,6 @@ declare -A platform_map=(
   # ["Netflix"]="Netflix"
 )
 
-standardized_platforms=()
 for platform in "${unlocked_platforms[@]}"; do
   std_platform=${platform_map[$platform]:-$platform}
   standardized_platforms+=("$std_platform")
