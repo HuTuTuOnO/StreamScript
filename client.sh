@@ -1,7 +1,5 @@
 #!/bin/bash
-
 ver='1.0.0'
-type="1-stream" # 流媒体检测脚本类型 lmt999 1-stream
 
 # 检查是否为 root 用户
 if [[ $EUID -ne 0 ]]; then
@@ -63,14 +61,7 @@ fi
 echo "提示：正在检测流媒体解锁状态..."
 for round in {1..3}; do
   for attempt in {1..3}; do
-    if [[ "$type" == "lmt999" ]]; then
-      media_temp=$(bash <(curl -L -s check.unlock.media) -M 4 -R 66 2>&1)
-    elif [[ "$type" == "1-stream" ]]; then
-      media_temp=$(echo | bash <(curl -L -s https://github.com/1-stream/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
-    else
-      echo "错误：未知的流媒体检测脚本类型 $type"
-      exit 1
-    fi
+    media_temp=$(bash <(curl -L -s https://github.com/HuTuTuOnO/RegionRestrictionCheck/raw/main/check.sh) -M 4 -R 66 2>&1)
     if [[ -n "$media_temp" ]]; then
       echo "提示：流媒体检测脚本执行成功（第${round}次）"
       break
@@ -94,44 +85,14 @@ fi
 #echo -e "$media_content" > /opt/stream/stream.log
 
 # 读取流媒体状态（修正正则表达式）
-if [[ "$type" == "lmt999" || "$type" == "1-stream" ]]; then
-  mapfile -t locked_platforms < <(echo -e "$media_content" | \
-    grep -E '\[3[1|3]m' | \
-    grep ':' | \
-    sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
-    sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
-    grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络|输入|版本)' | \
-    sort | uniq
-  )
-else
-  echo "错误：未知的流媒体检测脚本类型 $type"
-  exit 1
-fi
-
-# 标准化平台名称映射
-if [[ "$type" == "1-stream" ]]; then
-  declare -A platform_map=(
-    # ["Netflix"]="Netflix"
-    ["Tiktok"]="Tiktok Region"
-    ["iQyi Oversea"]="iQyi Oversea Region"
-    ["Google Gemini Location"]="Google Gemini"
-    ["Sky DE"]="SLY DE"
-    ["Spotify Region"]="Spotify Registration"
-    ["SHOWTIME"]="SkyShowTime"
-  )
-elif [[ "$type" == "lmt999" ]]; then
-  declare -A platform_map=()
-fi
-
-# 标准化锁定平台名称
-declare -a standardized_platforms=()
-for platform in "${locked_platforms[@]}"; do
-  std_platform=${platform_map[$platform]:-$platform}
-  standardized_platforms+=("$std_platform")
-done
-
-# 生成最终未解锁平台列表
-locked_platforms=("${standardized_platforms[@]}")
+mapfile -t locked_platforms < <(echo -e "$media_content" | \
+  grep -E '\[3[1|3]m' | \
+  grep ':' | \
+  sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
+  sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
+  grep -v -E '(反馈|使用|推广|详情|频道|价格|解锁|音乐|http|t\.me|TG|BUG|脚本|测试|网络|输入|版本)' | \
+  sort | uniq
+)
 
 # 记录已添加的出口节点和规则
 declare -A routes
