@@ -58,13 +58,13 @@ config_file="/opt/stream/service.json"
 if [[ -f "$config_file" ]]; then
   api=${api:-$(jq -r '.api' "$config_file")}
   id=${id:-$(jq -r '.id' "$config_file")}
-  exclude_platforms=$(jq -r '.exclude // empty' "$config_file")
+  exclude=$(jq -r '.exclude // empty' "$config_file")
 fi
 
 # 如果传入了 API 或 ID 参数，更新本地配置文件
 if [[ -n "$api" || -n "$id" ]]; then
   mkdir -p "$(dirname "$config_file")"
-  jq -n --arg api "$api" --arg id "$id" --arg exclude "$exclude_platforms" '{api: $api, id: $id, exclude: $exclude}' > "$config_file"
+  jq -n --arg api "$api" --arg id "$id" --arg exclude "$exclude" '{api: $api, id: $id, exclude: $exclude}' > "$config_file"
   echo "配置已更新到 $config_file"
 fi
 
@@ -103,10 +103,22 @@ while IFS= read -r line; do
   fi
 done <<< "$media_content"
 
+# 标准化平台名称映射
+# 平台原名以 lmc999 提供的名称为准
+# [平台原名]="标准化名称"
+declare -A platform_map=(
+  # ["Netflix"]="Netflix"
+)
 
-# 过滤 exclude_platforms 平台
+standardized_platforms=()
 for platform in "${unlocked_platforms[@]}"; do
-  if [[ ! " $exclude_platforms " =~ " $platform " ]]; then
+  std_platform=${platform_map[$platform]:-$platform}
+  standardized_platforms+=("$std_platform")
+done
+
+# 过滤 exclude 平台
+for platform in "${standardized_platforms[@]}"; do
+  if [[ ! " $exclude " =~ " $platform " ]]; then
     filtered_platforms+=("$platform")
   fi
 done
