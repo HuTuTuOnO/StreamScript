@@ -287,7 +287,7 @@ check_stream_locked() {
     local media_temp
     local media_content=""
 
-    for round in 1; do
+    for round in {1..3}; do
         for attempt in {1..3}; do
             media_temp=$(bash <(curl -L -s "$STREAM_CHECK_URL") -M 4 -R 66 2>&1 || true)
             if [[ -n "$media_temp" ]]; then
