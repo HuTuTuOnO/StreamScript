@@ -149,6 +149,28 @@ check_tcping() {
     fi
 }
 
+# 检测 dig 命令
+check_dig() {
+    if ! command -v dig &> /dev/null; then
+        print_info "dig 未安装，正在尝试安装..."
+        if command -v apt &> /dev/null; then
+            install_dependencies bind9-dnsutils || {
+                print_error "安装 dig 失败，请手动安装"
+                exit 1
+            }
+        elif command -v apk &> /dev/null; then
+            install_dependencies bind-tools || {
+                print_error "安装 dig 失败，请手动安装"
+                exit 1
+            }
+        else
+            print_error "不支持的包管理器，请手动安装 dig"
+            exit 1
+        fi
+        print_success "dig 安装成功"
+    fi
+}
+
 # 获取 API 数据 并解析到 PLATFORMS NODES
 fetch_api_data() {
     local api_url="$1"
@@ -212,7 +234,7 @@ process_nodes() {
     
     # 遍历所有节点
     while IFS= read -r node_alias; do
-        local host port output ipaddr latency
+        local host port output ipaddr latency # upload_at upload_time time_diff
         
         host=$(echo "$NODES" | jq -r --arg alias "$node_alias" '.[$alias].host // empty')
         port=$(echo "$NODES" | jq -r --arg alias "$node_alias" '.[$alias].port // empty')
@@ -235,13 +257,31 @@ process_nodes() {
         if [[ -z "$latency" ]]; then
             # 检查并安装 tcping
             check_tcping
-
-            if [[ -n "$ip_opt" ]]; then
-                output=$(tcping -n 4 "$ip_opt" "$host" -p "$port" 2>&1 || true)
-            else
-                output=$(tcping -n 4 "$host" -p "$port" 2>&1 || true)
-            fi
+            output=$(tcping -n 4 ${ip_opt:+$ip_opt }"$host" -p "$port" 2>&1 || true)
             latency=$(echo "$output" | grep '平均' | awk -F'= ' '{print $2}' | grep -oE '[0-9.]+' || true)
+            # 如果仍然失败，先使用 DIG 解析 IP 再测一次
+            if [[ -z "$latency" ]]; then
+                check_dig
+                local resolved_ip
+                if [[ -n "$ip_opt" ]]; then
+                    if [[ "$IP_TYPE" == "4" ]]; then
+                        resolved_ip=$(dig +tcp +short "$host" -t A @8.8.8.8 | head -1 || true)
+                    elif [[ "$IP_TYPE" == "6" ]]; then
+                        resolved_ip=$(dig +tcp +short "$host" -t AAAA @8.8.8.8 | head -1 || true)
+                    else
+                        resolved_ip=$(dig +tcp +short "$host" @8.8.8.8 | head -1 || true)
+                    fi
+                else
+                    resolved_ip=$(dig +tcp +short "$host" @8.8.8.8  | head -1 || true)
+                fi
+                if [[ -n "$resolved_ip" ]]; then
+                    output=$(tcping -n 4 ${ip_opt:+$ip_opt }"$resolved_ip" -p "$port" 2>&1 || true)
+                    # 打印 命令
+                    latency=$(echo "$output" | grep '平均' | awk -F'= ' '{print $2}' | grep -oE '[0-9.]+' || true)
+                else
+                    print_warning "无法解析节点 $node_alias ($host) 的 IP 地址"
+                fi
+            fi
         fi
         
         if [[ -z "$latency" ]]; then
@@ -253,7 +293,7 @@ process_nodes() {
         
         # 如果指定了 IP 类型，从输出中提取并替换 host
         if [[ -n "$IP_TYPE" ]]; then
-            ipaddr=$(echo "$output" | grep -oE '\[IPv[46] - [0-9a-fA-F:.]+\]|\([0-9a-fA-F:.]+\)' | sed -E 's/\[IPv[46] - ([0-9a-fA-F:.]+)\]/\1/; s/\(([0-9a-fA-F:.]+)\)/\1/' | head -1 || true)
+            ipaddr=$(echo "$output" | grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}|([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}' | head -1 || true)
             if [[ -n "$ipaddr" ]]; then
                 NODES=$(echo "$NODES" | jq --arg alias "$node_alias" --arg ip "$ipaddr" '.[$alias].host = $ip')
                 print_info "节点 $node_alias: $host -> $ipaddr (${latency}ms)"
