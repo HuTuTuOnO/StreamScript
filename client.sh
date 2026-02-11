@@ -176,53 +176,80 @@ check_dig() {
 # 获取 API 数据 并解析到 PLATFORMS NODES
 fetch_api_data() {
     local api_url="$1"
-    local api_resp
-    local code
+    local api_resp=""
+    local api_code=""
+    local curl_exit=0
     
+    set +e
     api_resp=$(curl -s "$api_url" 2>&1)
-    if [[ -z "$api_resp" ]]; then
-        print_warning "请求失败，尝试使用代理重试..."
-        api_resp=$(curl -s --proxy "$API_PROXY" "$api_url" 2>&1)
-        if [[ -z "$api_resp" ]]; then
-            print_error "无法连接到 API"
-            exit 1
-        fi
-    fi
-    
-    code=$(echo "$api_resp" | jq -r '.code // empty' 2>/dev/null)
-    if [[ "$code" != "200" ]]; then
-        print_warning "API 返回错误码 $code，尝试使用代理重试..."
-        api_resp=$(curl -s --proxy "$API_PROXY" "$api_url" 2>&1)
-        code=$(echo "$api_resp" | jq -r '.code // empty' 2>/dev/null)
+    curl_exit=$?
+    set -e
+
+    if [[ $curl_exit -ne 0 ]] || [[ -z "$api_resp" ]] || ! echo "$api_resp" | jq empty 2>/dev/null; then
+        print_warning "API 直连请求失败，尝试使用代理..."
         
-        if [[ "$code" != "200" ]]; then
-            local msg
-            msg=$(echo "$api_resp" | jq -r '.msg // "未知错误"' 2>/dev/null)
-            print_error "API 返回错误: $msg（code: $code）"
+        set +e
+        api_resp=$(curl -s --proxy "$API_PROXY" "$api_url" 2>&1)
+        curl_exit=$?
+        set -e
+        
+        if [[ $curl_exit -ne 0 ]] || [[ -z "$api_resp" ]] || ! echo "$api_resp" | jq empty 2>/dev/null; then
+            print_error "无法连接到 API 或响应无效"
+            [[ -n "$api_resp" ]] && print_error "响应内容: ${api_resp:0:200}"
             exit 1
         fi
+        print_info "API 代理请求成功"
     fi
     
-    # 解析节点数据和平台数据到全局变量
-    if ! NODES=$(echo "$api_resp" | jq -c '.data.node // {}' 2>/dev/null); then
-        print_error "无法解析节点数据"
+    set +e
+    api_code=$(echo "$api_resp" | jq -r '.code // empty' 2>/dev/null || echo "")
+    set -e
+
+    if [[ "$api_code" != "200" ]]; then
+        print_warning "API 返回错误码: $api_code，尝试使用代理重试..."
+        
+        set +e
+        api_resp=$(curl -s --proxy "$API_PROXY" "$api_url" 2>&1)
+        curl_exit=$?
+        set -e
+        
+        if [[ $curl_exit -ne 0 ]] || [[ -z "$api_resp" ]]; then
+            print_error "API 代理请求失败"
+            exit 1
+        fi
+
+        set +e
+        api_code=$(echo "$api_resp" | jq -r '.code // empty' 2>/dev/null || echo "")
+        set -e
+        
+        if [[ "$api_code" != "200" ]]; then
+            local msg
+            msg=$(echo "$api_resp" | jq -r '.msg // "未知错误"' 2>/dev/null || echo "未知错误")
+            print_error "API 返回错误: $msg (code: $api_code)"
+            exit 1
+        fi
+        print_info "API 代理请求成功"
+    fi
+
+    set +e
+    NODES=$(echo "$api_resp" | jq -c '.data.node // {}' 2>/dev/null)
+    set -e
+    
+    if [[ -z "$NODES" ]] || [[ "$NODES" == "{}" ]]; then
+        print_error "节点数据为空或解析失败"
         exit 1
     fi
     
-    if ! PLATFORMS=$(echo "$api_resp" | jq -c '.data.platform // {}' 2>/dev/null); then
-        print_error "无法解析平台数据"
+    set +e
+    PLATFORMS=$(echo "$api_resp" | jq -c '.data.platform // {}' 2>/dev/null)
+    set -e
+    
+    if [[ -z "$PLATFORMS" ]] || [[ "$PLATFORMS" == "{}" ]]; then
+        print_error "平台数据为空或解析失败"
         exit 1
     fi
     
-    if [[ "$NODES" == "{}" ]]; then
-        print_error "节点数据为空"
-        exit 1
-    fi
-    
-    if [[ "$PLATFORMS" == "{}" ]]; then
-        print_error "平台数据为空"
-        exit 1
-    fi
+    print_success "API 数据获取成功"
 }
 
 # 处理IP类型参数 和 修改 NODES 数据 添加 time 字段
