@@ -26,6 +26,8 @@ readonly VERSION='1.0.0'
 readonly LOG_DIR="/opt/stream"
 readonly STREAM_CHECK_URL="https://github.com/HuTuTuOnO/RegionRestrictionCheck/raw/main/check.sh"
 readonly TCPING_INSTALL_URL="https://raw.githubusercontent.com/nodeseeker/tcping/main/install.sh"
+readonly API_PROXY="socks5h://stream:4ad41836-c392-5a66-fc86-30fbe651624a@113.29.231.250:20310"
+
 
 # 全局变量
 API_URL=""
@@ -174,32 +176,40 @@ check_dig() {
 # 获取 API 数据 并解析到 PLATFORMS NODES
 fetch_api_data() {
     local api_url="$1"
-    local api_response
+    local api_resp
+    local code
     
-    api_response=$(curl -s "$api_url" 2>&1)
-    
-    if [[ -z "$api_response" ]]; then
-        print_error "无法连接到 API"
-        exit 1
+    api_resp=$(curl -s "$api_url" 2>&1)
+    if [[ -z "$api_resp" ]]; then
+        print_warning "请求失败，尝试使用代理重试..."
+        api_resp=$(curl -s --proxy "$API_PROXY" "$api_url" 2>&1)
+        if [[ -z "$api_resp" ]]; then
+            print_error "无法连接到 API"
+            exit 1
+        fi
     fi
     
-    local code
-    code=$(echo "$api_response" | jq -r '.code // empty' 2>/dev/null)
-    
+    code=$(echo "$api_resp" | jq -r '.code // empty' 2>/dev/null)
     if [[ "$code" != "200" ]]; then
-        local msg
-        msg=$(echo "$api_response" | jq -r '.msg // "未知错误"' 2>/dev/null)
-        print_error "API 返回错误: $msg"
-        exit 1
+        print_warning "API 返回错误码 $code，尝试使用代理重试..."
+        api_resp=$(curl -s --proxy "$API_PROXY" "$api_url" 2>&1)
+        code=$(echo "$api_resp" | jq -r '.code // empty' 2>/dev/null)
+        
+        if [[ "$code" != "200" ]]; then
+            local msg
+            msg=$(echo "$api_resp" | jq -r '.msg // "未知错误"' 2>/dev/null)
+            print_error "API 返回错误: $msg（code: $code）"
+            exit 1
+        fi
     fi
     
     # 解析节点数据和平台数据到全局变量
-    if ! NODES=$(echo "$api_response" | jq -c '.data.node // {}' 2>/dev/null); then
+    if ! NODES=$(echo "$api_resp" | jq -c '.data.node // {}' 2>/dev/null); then
         print_error "无法解析节点数据"
         exit 1
     fi
     
-    if ! PLATFORMS=$(echo "$api_response" | jq -c '.data.platform // {}' 2>/dev/null); then
+    if ! PLATFORMS=$(echo "$api_resp" | jq -c '.data.platform // {}' 2>/dev/null); then
         print_error "无法解析平台数据"
         exit 1
     fi
