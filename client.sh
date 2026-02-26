@@ -25,7 +25,7 @@ readonly NC='\033[0m' # No Color
 readonly VERSION='1.0.0'
 readonly LOG_DIR="/opt/stream"
 readonly STREAM_CHECK_URL="https://github.com/HuTuTuOnO/RegionRestrictionCheck/raw/main/check.sh"
-readonly TCPING_INSTALL_URL="https://raw.githubusercontent.com/nodeseeker/tcping/main/install.sh"
+readonly TCPING_INSTALL_URL="https://raw.githubusercontent.com/nodeseeker/tcping/main/tools/install.sh"
 readonly API_PROXY="socks5h://stream:4ad41836-c392-5a66-fc86-30fbe651624a@113.29.231.250:20310"
 
 
