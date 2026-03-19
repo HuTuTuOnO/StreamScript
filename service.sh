@@ -59,7 +59,7 @@ fi
 
 # 获取流媒体解锁状态
 echo "提示：正在检测流媒体解锁状态..."
-for attempt in 1; do
+for attempt in {1..3}; do
   media_content=$(echo "" | bash <(curl -L -s https://github.com/HuTuTuOnO/RegionRestrictionCheck/raw/main/check.sh) -M 4 2>&1)
   if [[ -n "$media_content" ]]; then
     echo "提示：流媒体检测脚本执行成功"
