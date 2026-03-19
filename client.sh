@@ -366,7 +366,7 @@ check_stream_locked() {
 
     for round in 1; do
         for attempt in {1..3}; do
-            media_temp=$(bash <(curl -L -s "$STREAM_CHECK_URL") -M 4 -R 66 2>&1 || true)
+            media_temp=$(echo "" | bash <(curl -L -s "$STREAM_CHECK_URL") -M 4 2>&1 || true)
             if [[ -n "$media_temp" ]]; then
                 print_success "流媒体检测完成（第 ${round} 轮）"
                 break
