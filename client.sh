@@ -200,6 +200,8 @@ fetch_api_data() {
         fi
         print_info "API 代理请求成功"
     fi
+
+    echo "$api_resp" > "${LOG_DIR}/data.log"
     
     set +e
     api_code=$(echo "$api_resp" | jq -r '.code // empty' 2>/dev/null || echo "")
@@ -358,8 +360,6 @@ process_nodes() {
 # 检测未解锁平台并记录到 LOCKED_PLATFORMS
 check_stream_locked() {
     print_info "正在检测流媒体解锁状态..."
-    # 创建日志目录
-    mkdir -p "$LOG_DIR"
 
     local media_temp
     local media_content=""
@@ -711,6 +711,9 @@ main() {
         show_help
         exit 1
     fi
+
+    # 创建日志目录
+    mkdir -p "$LOG_DIR"
     
     check_root
     check_dependencies
