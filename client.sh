@@ -387,7 +387,7 @@ check_stream_locked() {
     fi
     
     mapfile -t LOCKED_PLATFORMS < <(echo "$media_content" | \
-        grep -E '\[3[1|3]m' | \
+        grep -E '\[3[13]m' | \
         grep ':' | \
         sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | \
         sed -E 's/^[[:space:]]+//; s/:\[[^]]*\]//; s/\t.*$//; s/[[:space:]]{2,}.*$//; s/[[:space:]]+$//; s/:$//' | \
@@ -488,91 +488,191 @@ process_platforms() {
 
 # 生成soga路由配置文件
 generate_soga_routes() {
-    # 定义文件路径
-    local routes_file="/etc/soga/routes.toml"
-    local routes_temp="/etc/soga/routes.toml.tmp"
-    
-    # 声明节点信息变量（在函数开始处统一声明）
-    local node_type node_host node_port
-    local node_value1 node_value2 node_value3 node_value4 node_value5 node_value6
 
-    # 清空临时文件
-    : > "$routes_temp"
-    echo "enable=true" > "$routes_temp"
-    # 写入路由部分
-    for alias in "${!ROUTES[@]}"; do
-        if [[ -z "${ROUTES[$alias]}" ]]; then
-            print_warning "节点 $alias 没有任何规则，跳过"
-            continue
-        fi
+    # 判断目录是否存在
+    if [[ -d /etc/soga ]]; then
+        
+        # 定义文件路径
+        local routes_file="/etc/soga/routes.toml"
+        local routes_temp="/etc/soga/routes.toml.tmp"
+        
+        # 声明节点信息变量（在函数开始处统一声明）
+        local node_type node_host node_port
+        local node_value1 node_value2 node_value3 node_value4 node_value5 node_value6
 
-        # 写入路由规则
-        echo '' >> "$routes_temp"
-        echo "# 路由 $alias" >> "$routes_temp"
-        echo '[[routes]]' >> "$routes_temp"
-        echo 'rules=[' >> "$routes_temp"
-        IFS='^'
-        for rule in ${ROUTES[$alias]}; do
-            echo "  $rule," >> "$routes_temp"
+        # 清空临时文件
+        : > "$routes_temp"
+        echo "enable=true" > "$routes_temp"
+        # 写入路由部分
+        for alias in "${!ROUTES[@]}"; do
+            if [[ -z "${ROUTES[$alias]}" ]]; then
+                print_warning "节点 $alias 没有任何规则，跳过"
+                continue
+            fi
+
+            # 写入路由规则
+            echo '' >> "$routes_temp"
+            echo "# 路由 $alias" >> "$routes_temp"
+            echo '[[routes]]' >> "$routes_temp"
+            echo 'rules=[' >> "$routes_temp"
+            IFS='^'
+            for rule in ${ROUTES[$alias]}; do
+                echo "  $rule," >> "$routes_temp"
+            done
+            unset IFS
+            echo ']' >> "$routes_temp"
+
+            # 获取节点信息（一次性获取所有字段）
+            read -r node_type node_host node_port node_value1 node_value2 node_value3 node_value4 node_value5 node_value6 < <(
+                echo "$NODES" | jq -r --arg alias "$alias" '
+                    .[$alias] | 
+                    [.type // "", .host // "", .port // "", .value1 // "", .value2 // "", .value3 // "", .value4 // "", .value5 // "", .value6 // ""] | 
+                    @tsv
+                '
+            )
+
+            # 写入出口节点
+            echo '' >> "$routes_temp"
+            echo "# 出口 $alias" >> "$routes_temp"
+            echo '[[routes.Outs]]' >> "$routes_temp"
+            echo "type=\"$node_type\"" >> "$routes_temp"
+            echo "server=\"$node_host\"" >> "$routes_temp"
+            echo "port=$node_port" >> "$routes_temp"
+            case "$node_type" in
+                "ss")
+                    echo "password=\"$node_value1\"" >> "$routes_temp"
+                    echo "cipher=\"$node_value2\"" >> "$routes_temp"
+                ;;
+                "trojan")
+                    echo "password=\"$node_value1\"" >> "$routes_temp"
+                    echo "sin=\"$node_value2\"" >> "$routes_temp"
+                    if [[ "$node_value3" == "1" ]]; then
+                        echo "skip_cert_verify=true" >> "$routes_temp"
+                    else
+                        echo "skip_cert_verify=false" >> "$routes_temp"
+                    fi
+                ;;
+                "http"|"socks")
+                    echo "username=\"$node_value1\"" >> "$routes_temp"
+                    echo "password=\"$node_value2\"" >> "$routes_temp"
+                ;;
+                *)
+                # 其他类型可扩展
+                ;;
+            esac
         done
-        unset IFS
-        echo ']' >> "$routes_temp"
 
-        # 获取节点信息（一次性获取所有字段）
-        read -r node_type node_host node_port node_value1 node_value2 node_value3 node_value4 node_value5 node_value6 < <(
-            echo "$NODES" | jq -r --arg alias "$alias" '
-                .[$alias] | 
-                [.type // "", .host // "", .port // "", .value1 // "", .value2 // "", .value3 // "", .value4 // "", .value5 // "", .value6 // ""] | 
-                @tsv
-            '
-        )
-
-        # 写入出口节点
+        # 添加全局路由规则
         echo '' >> "$routes_temp"
-        echo "# 出口 $alias" >> "$routes_temp"
+        echo '# 路由 ALL' >> "$routes_temp"
+        echo '[[routes]]' >> "$routes_temp"
+        echo 'rules=["*"]' >> "$routes_temp"
+        echo '' >> "$routes_temp"
+        echo '# 出口 ALL' >> "$routes_temp"
         echo '[[routes.Outs]]' >> "$routes_temp"
-        echo "type=\"$node_type\"" >> "$routes_temp"
-        echo "server=\"$node_host\"" >> "$routes_temp"
-        echo "port=$node_port" >> "$routes_temp"
-        case "$node_type" in
-            "ss")
-                echo "password=\"$node_value1\"" >> "$routes_temp"
-                echo "cipher=\"$node_value2\"" >> "$routes_temp"
-            ;;
-            "trojan")
-                echo "password=\"$node_value1\"" >> "$routes_temp"
-                echo "sin=\"$node_value2\"" >> "$routes_temp"
-                if [[ "$node_value3" == "1" ]]; then
-                    echo "skip_cert_verify=true" >> "$routes_temp"
-                else
-                    echo "skip_cert_verify=false" >> "$routes_temp"
-                fi
-            ;;
-            "http"|"socks")
-                echo "username=\"$node_value1\"" >> "$routes_temp"
-                echo "password=\"$node_value2\"" >> "$routes_temp"
-            ;;
-            *)
-            # 其他类型可扩展
-            ;;
-        esac
-    done
+        echo 'type="direct"' >> "$routes_temp"
 
-    # 添加全局路由规则
-    echo '' >> "$routes_temp"
-    echo '# 路由 ALL' >> "$routes_temp"
-    echo '[[routes]]' >> "$routes_temp"
-    echo 'rules=["*"]' >> "$routes_temp"
-    echo '' >> "$routes_temp"
-    echo '# 出口 ALL' >> "$routes_temp"
-    echo '[[routes.Outs]]' >> "$routes_temp"
-    echo 'type="direct"' >> "$routes_temp"
+        # 替换旧的路由文件
+        cat "$routes_temp" > "$routes_file"
+        rm -f "$routes_temp"
 
-    # 替换旧的路由文件
-    cat "$routes_temp" > "$routes_file"
-    rm -f "$routes_temp"
+        print_success "soga 路由配置文件生成完成: $routes_file"
+    fi
+}
 
-    print_success "soga 路由配置文件生成完成: $routes_file"
+# 生成xrayr配置路由文件
+generate_xrayr_routes(){
+
+    # 判断目录是否存在
+    if [[ -d /etc/XrayR ]]; then
+        # 定义文件路径
+        local route_file="/etc/XrayR/route.json"
+        local outbound_file="/etc/XrayR/custom_outbound.json"
+
+        # 定义文件内容
+        local route_content outbound_content
+
+        # 声明节点信息变量（在函数开始处统一声明）
+        local node_type node_host node_port
+        local node_value1 node_value2 node_value3 node_value4 node_value5 node_value6
+
+        # 写入默认配置
+        route_content=$(jq -n '{"domainStrategy":"IPOnDemand","rules":[{"type":"field","outboundTag":"block","protocol":["bittorrent"]}]}')
+        outbound_content=$(jq -n '[{"tag":"IPv4_out","sendThrough":"0.0.0.0","protocol":"freedom"},{"protocol":"blackhole","tag":"block"}]')
+
+        # 写入路由部分
+        for alias in "${!ROUTES[@]}"; do
+            if [[ -z "${ROUTES[$alias]}" ]]; then
+                print_warning "节点 $alias 没有任何规则，跳过"
+                continue
+            fi
+
+            # 追加 route 
+            route_content=$(echo "$route_content" | jq \
+                --arg tag "$alias" \
+                --argjson domains "$(IFS='^'; read -ra r <<< "${ROUTES[$alias]}"; printf '%s\n' "${r[@]}" | sed 's/^"//; s/"$//' | jq -R . | jq -s .)" \
+                '.rules += [{"type":"field","outboundTag":$tag,"domain":$domains}]')
+            
+            # 获取节点信息
+            read -r node_type node_host node_port node_value1 node_value2 node_value3 node_value4 node_value5 node_value6 < <(
+                echo "$NODES" | jq -r --arg alias "$alias" '
+                    .[$alias] | 
+                    [.type // "", .host // "", .port // "", .value1 // "", .value2 // "", .value3 // "", .value4 // "", .value5 // "", .value6 // ""] | 
+                    @tsv
+                '
+            )
+
+            # 追加 outbound
+            case "$node_type" in
+                "socks")
+                    outbound_content=$(echo "$outbound_content" | jq \
+                        --arg tag "$alias" \
+                        --arg host "$node_host" \
+                        --argjson port "$node_port" \
+                        --arg user "$node_value1" \
+                        --arg pass "$node_value2" \
+                        '. += [{"tag":$tag,"protocol":"socks","settings":{"servers":[{"address":$host,"port":$port,"user":$user,"pass":$pass}]}}]')
+                    ;;
+                "http")
+                    outbound_content=$(echo "$outbound_content" | jq \
+                        --arg tag "$alias" \
+                        --arg host "$node_host" \
+                        --argjson port "$node_port" \
+                        --arg user "$node_value1" \
+                        --arg pass "$node_value2" \
+                        '. += [{"tag":$tag,"protocol":"http","settings":{"servers":[{"address":$host,"port":$port,"user":$user,"pass":$pass}]}}]')
+                    ;;
+                "ss")
+                    outbound_content=$(echo "$outbound_content" | jq \
+                        --arg tag "$alias" \
+                        --arg host "$node_host" \
+                        --argjson port "$node_port" \
+                        --arg pass "$node_value1" \
+                        --arg method "$node_value2" \
+                        '. += [{"tag":$tag,"protocol":"shadowsocks","settings":{"servers":[{"address":$host,"port":$port,"password":$pass,"method":$method}]}}]')
+                    ;;
+                "trojan")
+                    outbound_content=$(echo "$outbound_content" | jq \
+                        --arg tag "$alias" \
+                        --arg host "$node_host" \
+                        --argjson port "$node_port" \
+                        --arg pass "$node_value1" \
+                        '. += [{"tag":$tag,"protocol":"trojan","settings":{"servers":[{"address":$host,"port":$port,"password":$pass}]}}]')
+                    ;;
+            esac
+
+        done
+
+        # 输出文件到file
+        echo "$route_content" > "$route_file"
+        echo "$outbound_content" > "$outbound_file"
+
+        # 修改配置文件
+        sed -i 's|# /etc/XrayR/route.json|/etc/XrayR/route.json|' /etc/XrayR/config.yml
+        sed -i 's|# /etc/XrayR/custom_outbound.json|/etc/XrayR/custom_outbound.json|' /etc/XrayR/config.yml
+
+        print_success "XrayR 路由配置文件生成完成！"
+    fi
 }
 
 # 主函数
@@ -619,6 +719,7 @@ main() {
     check_stream_locked
     process_platforms
     generate_soga_routes
+    generate_xrayr_routes
 
     print_success "脚本执行完成"
 }
