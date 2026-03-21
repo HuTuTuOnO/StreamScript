@@ -631,7 +631,7 @@ generate_xrayr_routes(){
                         --argjson port "$node_port" \
                         --arg user "$node_value1" \
                         --arg pass "$node_value2" \
-                        '. += [{"tag":$tag,"protocol":"socks","settings":{"servers":[{"address":$host,"port":$port,"user":$user,"pass":$pass}]}}]')
+                        '. += [{"tag":$tag,"protocol":"socks","settings":{"servers":[{"address":$host,"port":$port,"users":[{"user":$user,"pass":$pass}]}]}}]')
                     ;;
                 "http")
                     outbound_content=$(echo "$outbound_content" | jq \
@@ -640,7 +640,7 @@ generate_xrayr_routes(){
                         --argjson port "$node_port" \
                         --arg user "$node_value1" \
                         --arg pass "$node_value2" \
-                        '. += [{"tag":$tag,"protocol":"http","settings":{"servers":[{"address":$host,"port":$port,"user":$user,"pass":$pass}]}}]')
+                        '. += [{"tag":$tag,"protocol":"http","settings":{"servers":[{"address":$host,"port":$port,"users":[{"user":$user,"pass":$pass}]}]}}]')
                     ;;
                 "ss")
                     outbound_content=$(echo "$outbound_content" | jq \
