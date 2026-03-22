@@ -296,7 +296,7 @@ process_nodes() {
         if [[ -z "$latency" ]]; then
             # 检查并安装 tcping
             check_tcping
-            output=$(tcping -n 4 ${ip_opt:+$ip_opt} -p "$port" "$host" 2>&1 || true)
+            output=$(tcping -n 4 ${ip_opt:+$ip_opt }-p "$port" "$host" 2>&1 || true)
             latency=$(echo "$output" | grep '平均' | awk -F'= ' '{print $2}' | grep -oE '[0-9.]+' || true)
             # 如果仍然失败，先使用 DIG 解析 IP 再测一次
             if [[ -z "$latency" ]]; then
@@ -314,7 +314,7 @@ process_nodes() {
                     resolved_ip=$(dig +tcp +short "$host" @8.8.8.8  | head -1 || true)
                 fi
                 if [[ -n "$resolved_ip" ]]; then
-                    output=$(tcping -n 4 ${ip_opt:+$ip_opt} -p "$port" "$resolved_ip" 2>&1 || true)
+                    output=$(tcping -n 4 ${ip_opt:+$ip_opt }-p "$port" "$resolved_ip" 2>&1 || true)
                     # 打印 命令
                     latency=$(echo "$output" | grep '平均' | awk -F'= ' '{print $2}' | grep -oE '[0-9.]+' || true)
                 else
